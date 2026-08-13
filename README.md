@@ -16,6 +16,11 @@ each route, so you can see the gap on your own endpoint.
 > ungoverned). Read the article for their full methodology and figures. **This repo does not
 > reproduce their exact numbers** — it lets you generate *your own* on *your* model.
 
+> **Disclosure.** The study reproduced here was sponsored by Informatica, a Salesforce company.
+> The author of this repository is employed by Salesforce. That is a reason to run this harness
+> yourself rather than take its output on trust — which is the entire point of publishing it.
+> Contradicting results are welcome; open an issue with your `report.json`.
+
 ## What's real vs. synthetic (read this first)
 
 - **The data is synthetic.** It's generated with the open-source [Faker](https://faker.readthedocs.io/)
@@ -26,6 +31,8 @@ each route, so you can see the gap on your own endpoint.
 - **The model calls, token counts, and F1 scores are real.** Every run makes live API calls to
   the endpoint you configure and reads the real `usage` block. Your numbers will differ from the
   article's (different model, endpoint, route implementation) — that's expected and the point.
+- **The governed route is not given the answer key.** See below. This is the design decision
+  that determines whether the benchmark means anything.
 
 ## The task
 
@@ -36,68 +43,76 @@ Two routes answer it against the **same** synthetic catalog:
 | Route | How it reaches the data |
 |---|---|
 | **Ungoverned** (context stuffing) | The entire raw column catalog is dumped into the prompt. |
-| **Governed** (metadata layer) | Classification happened once, up front; only the pre-classified Government-ID columns are passed. |
+| **Governed** (metadata layer) | A classifier ran once, up front. The model receives its **candidate** set — true Gov-ID columns **mixed with decoys the classifier flagged in error** — and must still discriminate. |
 
 Both are scored with Precision / Recall / F1 against the frozen key.
+
+### Why the governed route gets decoys
+
+If the governed route were handed only the true positives, it would be transcribing an answer
+key, not retrieving anything — it could not lose, and the benchmark would prove nothing. So
+`--classifier-fp-rate` (default `1.0`) injects one flagged decoy per true positive. The
+governed route can and does lose precision. Setting it to `0` restores the answer-key
+behaviour and prints a warning; do not publish numbers produced that way.
 
 ## Quick start (≈ 5 minutes)
 
 ```bash
 python3 -m venv .venv && . .venv/bin/activate
-pip install faker
+pip install -r requirements.txt
 
 export OPENAI_BASE_URL="https://api.openai.com/v1"   # or Azure OpenAI v1, or a gateway that proxies OpenAI-style calls
 export OPENAI_API_KEY="sk-..."
 export OPENAI_MODEL="gpt-4o-mini"
 
-python3 token_bleed_benchmark.py --tiers 300 1500 3000 --out report.json
+python3 token_bleed_benchmark.py --tiers 300 1500 3000 --replicates 3 --out report.json
 ```
 
 Any endpoint that accepts an OpenAI-style `POST {OPENAI_BASE_URL}/chat/completions` and returns
 a `usage` block works — OpenAI, Azure OpenAI (v1 path), Gemini OpenAI-compat, or a gateway in
-front of them.
+front of them. The script probes both `max_completion_tokens` and `max_tokens` so it works
+across providers that disagree about the parameter name, retries 429/5xx with backoff, and
+writes `--out` incrementally so a late rate-limit doesn't discard completed tiers.
 
-## Example output
+### Flags that matter
 
-Running against a `gemini-2.5-flash`-class model through a gateway (your numbers will vary):
+| Flag | Default | Why |
+|---|---|---|
+| `--replicates N` | `1` | Runs each tier against **N different catalog seeds**. F1 over a few dozen true positives is noisy — at 300 objects there are ~5, so one miss moves F1 by ~0.15. Re-running a single frozen catalog only varies model output, not the data. Use ≥3 before quoting anything. |
+| `--classifier-fp-rate R` | `1.0` | Decoys the governed classifier flags per true positive. Raise it to model a worse classifier. |
+| `--tiers`, `--seed`, `--out` | `300 1500 3000`, `42`, none | — |
 
-```
-Tier: 300 objects   (300 columns, 5 true Gov-ID)
-  ungoverned (context-stuffing)    tokens=  5,540  F1=0.750
-  governed (metadata layer)        tokens=    690  F1=0.889
-  --> governed used 8.0x fewer tokens, F1 0.889 vs 0.750
-
-Tier: 1500 objects  (1500 columns, 23 true Gov-ID)
-  ungoverned (context-stuffing)    tokens= 22,897  F1=0.516
-  governed (metadata layer)        tokens=  1,635  F1=0.878
-  --> governed used 14.0x fewer tokens, F1 0.878 vs 0.516
-
-Tier: 3000 objects  (3000 columns, 54 true Gov-ID)
-  ungoverned (context-stuffing)    tokens= 43,911  F1=0.286
-  governed (metadata layer)        tokens=  3,040  F1=0.898
-  --> governed used 14.4x fewer tokens, F1 0.898 vs 0.286
-```
-
-The pattern to notice: as the catalog scales, the ungoverned route's accuracy **collapses**
-(recall drops — it can't find the needles in a bigger haystack) *and* it burns far more tokens.
-The governed route stays cheap and accurate. See `sample-report.json` for a full machine-readable
-run.
+Results print mean and \[min–max\] across replicates; `report.json` carries both the per-run
+rows and an `aggregate` block.
 
 ## How it works
 
-1. `build_catalog(n, seed)` — generates the synthetic catalog and freezes the answer key.
+1. `build_catalog(n, seed)` — generates the synthetic catalog (deduplicated) and freezes the
+   answer key.
 2. `route_ungoverned` — stuffs the full catalog into the prompt.
-3. `route_governed` — passes only the pre-classified matches (the classification is the
-   structural advantage a real governed catalog — e.g. Informatica CDGC surfaced via MCP —
-   provides once at ingestion).
-4. `score` — Precision / Recall / F1 vs. the frozen key.
+3. `route_governed` — passes the classifier's candidate set: true positives plus flagged
+   decoys. Classification happening once at ingestion is the structural advantage a real
+   governed catalog provides.
+4. `score` — Precision / Recall / F1 vs. the frozen key. Answers are parsed as whole
+   `TABLE.COLUMN` tokens, line by line, skipping lines that negate — otherwise a model that
+   restates "do not include X.TAX_ID" gets scored as having answered `X.TAX_ID`.
 
 ## Interpreting your numbers honestly
 
-- **Model non-determinism:** re-runs vary. Run each tier a few times; the *trend* (governed
-  cheaper + more accurate as data scales) is the robust signal, not any single number.
+- **Model non-determinism:** re-runs vary. Use `--replicates 3` or more; the *trend* (governed
+  cheaper and more accurate as data scales) is the robust signal, not any single number.
+- **Classifier recall is assumed perfect.** Every true Gov-ID column reaches the governed
+  candidate set. Real classifiers miss things, and a miss is unrecoverable because the model
+  never sees the raw catalog. This assumption is the one most favourable to the governed route
+  — state it when you cite your numbers.
+- **The governed token count is a marginal query cost, not total cost of ownership.** It
+  excludes building and maintaining the catalog. The honest question for a buyer is the payback
+  volume: at what query rate does classification amortise? This harness does not answer that.
 - **This is a floor, not a ceiling:** a real governed catalog also handles freshness, lineage,
   and proprietary classifiers this toy harness doesn't model.
+- **Two routes is not the whole space.** Context stuffing is a weak baseline. A competitive
+  comparison would add embedding retrieval over the catalog, or a plain regex prefilter — if a
+  ten-line heuristic captures most of the benefit, that is the more interesting result.
 - **Cost:** multiply tokens by your provider's rate to get dollars. Small per-call gaps become
   large at production call volumes — that's the "token bleed."
 
