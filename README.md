@@ -80,10 +80,19 @@ writes `--out` incrementally so a late rate-limit doesn't discard completed tier
 |---|---|---|
 | `--replicates N` | `1` | Runs each tier against **N different catalog seeds**. F1 over a few dozen true positives is noisy — at 300 objects there are ~5, so one miss moves F1 by ~0.15. Re-running a single frozen catalog only varies model output, not the data. Use ≥3 before quoting anything. |
 | `--classifier-fp-rate R` | `1.0` | Decoys the governed classifier flags per true positive. Raise it to model a worse classifier. |
+| `--timeout S` | `120` (or `OPENAI_TIMEOUT`) | Per-call HTTP timeout. **Raise it for slower local/self-hosted models** — a large context-stuffing prompt (the ungoverned route at the bigger tiers) can take several minutes on a local model and will otherwise time out all retries and abort the run. Hosted APIs rarely need it. |
 | `--tiers`, `--seed`, `--out` | `300 1500 3000`, `42`, none | — |
 
 Results print mean and \[min–max\] across replicates; `report.json` carries both the per-run
-rows and an `aggregate` block.
+rows and an `aggregate` block, plus `token_param_used` (which max-token name the endpoint accepted)
+and `call_timeout_s`.
+
+> **Running against a local model (Ollama, vLLM, LM Studio)?** Point `OPENAI_BASE_URL` at it
+> (e.g. `http://localhost:11434/v1` for Ollama; `OPENAI_API_KEY` can be any non-empty string —
+> most local servers ignore it), and **add `--timeout 300`**. The ungoverned route's
+> context-stuffing prompt grows with the tier and a local model can exceed the 120s default;
+> the bigger tiers may still time out on constrained hardware — which is itself the point about
+> the cost of context stuffing. Use `--replicates 3+` before quoting any figure.
 
 ## How it works
 
