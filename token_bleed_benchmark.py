@@ -75,6 +75,11 @@ if not sys.stdout.isatty():
 # Which max-token parameter this endpoint accepts. Probed once, then cached.
 _TOKEN_PARAM = None
 
+# Per-call HTTP timeout in seconds. Overridden by --timeout / OPENAI_TIMEOUT for slower
+# local/self-hosted models (a large context-stuffing prompt on a local model can exceed the
+# default). Env is read at import so it applies even if main() isn't the entry point.
+_TIMEOUT = int(os.environ.get("OPENAI_TIMEOUT", "120"))
+
 
 def die(msg, code=2):
     print(f"{C['BAD']}ERROR:{C['R']} {msg}", file=sys.stderr); sys.exit(code)
@@ -113,11 +118,11 @@ def build_catalog(n_objects, seed):
     return columns, answer_key
 
 
-def _post(payload, base, key, timeout=120):
+def _post(payload, base, key, timeout=None):
     req = urllib.request.Request(f"{base}/chat/completions", data=json.dumps(payload).encode(),
                                  headers={"Content-Type": "application/json",
                                           "Authorization": f"Bearer {key}"}, method="POST")
-    return json.loads(urllib.request.urlopen(req, timeout=timeout).read().decode())
+    return json.loads(urllib.request.urlopen(req, timeout=timeout or _TIMEOUT).read().decode())
 
 
 def call_model(prompt, max_tokens=3000, retries=4):
@@ -165,7 +170,11 @@ def call_model(prompt, max_tokens=3000, retries=4):
         sleep = 2 ** attempt
         print(f"{C['DIM']}  retry {attempt+1}/{retries} in {sleep}s ({last}){C['R']}", file=sys.stderr)
         time.sleep(sleep)
-    die(f"model call failed after {retries} attempts: {last}")
+    hint = ""
+    if last and "timed out" in last.lower():
+        hint = (f" — every attempt hit the {_TIMEOUT}s per-call timeout; a large prompt on a slower "
+                f"local/self-hosted model can exceed it. Raise it with --timeout or OPENAI_TIMEOUT.")
+    die(f"model call failed after {retries} attempts: {last}{hint}")
 
 
 def parse_answer(content, all_fqnames):
@@ -245,6 +254,8 @@ def write_report(path, model, args, rows):
                    "data_is_synthetic": True, "calls_are_real": True,
                    "governed_route_sees_answer_key": False,
                    "classifier_recall_assumed_perfect": True,
+                   "token_param_used": _TOKEN_PARAM,   # which max-token name the endpoint accepted
+                   "call_timeout_s": _TIMEOUT,
                    "results": rows, "aggregate": aggregate(rows)}, fh, indent=2)
 
 
@@ -259,8 +270,16 @@ def main():
     ap.add_argument("--classifier-fp-rate", type=float, default=1.0,
                     help="decoys the governed classifier flags per true positive (default 1.0). "
                          "0.0 hands the governed route the answer key — not a real benchmark.")
+    ap.add_argument("--timeout", type=int, default=None,
+                    help="per-call HTTP timeout in seconds (default 120, or OPENAI_TIMEOUT). "
+                         "Raise it for slower local/self-hosted models — a large context-stuffing "
+                         "prompt on e.g. a local Ollama model can exceed 120s.")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
+
+    global _TIMEOUT
+    if args.timeout is not None:
+        _TIMEOUT = args.timeout
 
     if args.classifier_fp_rate == 0:
         print(f"{C['WARN']}WARNING: --classifier-fp-rate 0 gives the governed route the exact answer "
