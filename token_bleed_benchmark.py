@@ -158,8 +158,9 @@ def call_model(prompt, max_tokens=3000, retries=4):
 
     candidates = [_TOKEN_PARAM] if _TOKEN_PARAM else ["max_completion_tokens", "max_tokens"]
     t0 = time.time()
+    attempts = []
     last = None
-    for attempt in range(retries):
+    for attempt in range(1, retries + 1):
         for param in candidates:
             payload = {"messages": [{"role": "user", "content": prompt}], "model": model,
                        param: max_tokens}
@@ -168,31 +169,45 @@ def call_model(prompt, max_tokens=3000, retries=4):
                 _TOKEN_PARAM = param
                 u = j.get("usage", {}) or {}
                 det = u.get("completion_tokens_details", {}) or {}
-                return {"content": (j.get("choices") or [{}])[0].get("message", {}).get("content", "") or "",
+                attempts.append({"attempt": attempt, "token_parameter": param, "outcome": "success",
+                                 "elapsed_s": round(time.time() - t0, 3)})
+                return {"success": True,
+                        "content": (j.get("choices") or [{}])[0].get("message", {}).get("content", "") or "",
                         "returned_model": j.get("model") or model,
                         "prompt_tokens": u.get("prompt_tokens", 0) or 0,
                         "completion_tokens": u.get("completion_tokens", 0) or 0,
                         "reasoning_tokens": det.get("reasoning_tokens", 0) or 0,
                         "total_tokens": u.get("total_tokens", 0) or 0,
-                        "latency_s": round(time.time() - t0, 2)}
+                        "latency_s": round(time.time() - t0, 2),
+                        "attempts": attempts}
             except urllib.error.HTTPError as e:
                 body = e.read().decode()[:300]
                 last = f"HTTP {e.code} {body}"
+                attempts.append({"attempt": attempt, "token_parameter": param, "outcome": "error",
+                                 "error_class": "HTTPError", "error_message": last,
+                                 "elapsed_s": round(time.time() - t0, 3)})
                 if e.code == 400 and param == "max_completion_tokens" and len(candidates) > 1:
                     continue          # try the other parameter name
                 if e.code in (408, 409, 429) or e.code >= 500:
                     break             # retryable — fall through to backoff
-                die(f"model call failed: {last}")
+                return {"success": False, "content": "", "returned_model": model,
+                        "prompt_tokens": 0, "completion_tokens": 0, "reasoning_tokens": 0,
+                        "total_tokens": 0, "latency_s": round(time.time() - t0, 2),
+                        "attempts": attempts, "error_message": f"non-retryable model call failure: {last}"}
             except (urllib.error.URLError, TimeoutError) as e:
-                last = str(e); break
-        sleep = 2 ** attempt
-        print(f"{C['DIM']}  retry {attempt+1}/{retries} in {sleep}s ({last}){C['R']}", file=sys.stderr)
-        time.sleep(sleep)
-    hint = ""
-    if last and "timed out" in last.lower():
-        hint = (f" — every attempt hit the {_TIMEOUT}s per-call timeout; a large prompt on a slower "
-                f"local/self-hosted model can exceed it. Raise it with --timeout or OPENAI_TIMEOUT.")
-    die(f"model call failed after {retries} attempts: {last}{hint}")
+                last = str(e)
+                attempts.append({"attempt": attempt, "token_parameter": param, "outcome": "error",
+                                 "error_class": type(e).__name__, "error_message": last,
+                                 "elapsed_s": round(time.time() - t0, 3)})
+                break
+        if attempt < retries:
+            sleep = 2 ** (attempt - 1)
+            print(f"{C['DIM']}  retry {attempt}/{retries} in {sleep}s ({last}){C['R']}", file=sys.stderr)
+            time.sleep(sleep)
+    return {"success": False, "content": "", "returned_model": model,
+            "prompt_tokens": 0, "completion_tokens": 0, "reasoning_tokens": 0, "total_tokens": 0,
+            "latency_s": round(time.time() - t0, 2), "attempts": attempts,
+            "error_message": f"model call failed after {retries} attempts: {last}"}
 
 
 def parse_answer(content, all_fqnames):
@@ -221,15 +236,39 @@ def score(found, key):
     return dict(tp=tp, fp=fp, fn=fn, precision=round(prec, 3), recall=round(rec, 3), f1=round(f1, 3))
 
 
-def _call_route(prompt):
-    result = call_model(prompt)
+def _call_route(prompt, *, preparation_ms=0, context_window_tokens=None, max_tokens=3000):
+    constructed_input_token_count = len(prompt.encode("utf-8"))
+    if context_window_tokens is not None and constructed_input_token_count + max_tokens > context_window_tokens:
+        return {"success": False, "content": "", "returned_model": os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
+                "prompt_tokens": 0, "completion_tokens": 0, "reasoning_tokens": 0, "total_tokens": 0,
+                "latency_s": 0.0,
+                "attempts": [{"attempt": 0, "outcome": "context_preflight_refused",
+                              "error_class": "ContextBudgetExceeded",
+                              "error_message": "constructed input plus completion budget exceeds declared context window"}],
+                "error_message": "constructed input plus completion budget exceeds declared context window",
+                "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
+                "route_preparation_ms": round(preparation_ms, 3),
+                "constructed_input_token_count": constructed_input_token_count,
+                "token_count_method": "utf8_byte_upper_bound",
+                "context_window_tokens": context_window_tokens,
+                "requested_completion_tokens": max_tokens,
+                "prompt_truncated_by_context": None}
+    result = call_model(prompt, max_tokens=max_tokens)
     result["prompt_sha256"] = hashlib.sha256(prompt.encode()).hexdigest()
+    result["route_preparation_ms"] = round(preparation_ms, 3)
+    result["constructed_input_token_count"] = constructed_input_token_count
+    result["token_count_method"] = "utf8_byte_upper_bound"
+    result["context_window_tokens"] = context_window_tokens
+    result["requested_completion_tokens"] = max_tokens
+    result["prompt_truncated_by_context"] = False
     return result
 
 
-def route_ungoverned(columns, _key, _fp_rate, _fn_rate, _rng):
+def route_ungoverned(columns, _key, _fp_rate, _fn_rate, _rng, **settings):
+    started = time.perf_counter()
     catalog = "\n".join(c["fqname"] for c in columns)
-    return _call_route(f"Here is the full data catalog ({len(columns)} columns):\n{catalog}\n\n{TASK}")
+    prompt = f"Here is the full data catalog ({len(columns)} columns):\n{catalog}\n\n{TASK}"
+    return _call_route(prompt, preparation_ms=(time.perf_counter() - started) * 1000, **settings)
 
 
 # A deliberately cheap non-governance baseline: name-only matching. It has no
@@ -243,10 +282,12 @@ def lexical_candidates(columns):
             if LEXICAL_GOV_ID.search(c["fqname"].split(".", 1)[1])]
 
 
-def route_lexical(columns, _key, _fp_rate, _fn_rate, _rng):
+def route_lexical(columns, _key, _fp_rate, _fn_rate, _rng, **settings):
+    started = time.perf_counter()
     candidates = lexical_candidates(columns)
-    return _call_route(f"A cheap name-only lexical prefilter selected these {len(candidates)} columns "
-                       f"as potentially Government-ID related:\n" + "\n".join(candidates) + f"\n\n{TASK}")
+    prompt = (f"A cheap name-only lexical prefilter selected these {len(candidates)} columns "
+              f"as potentially Government-ID related:\n" + "\n".join(candidates) + f"\n\n{TASK}")
+    return _call_route(prompt, preparation_ms=(time.perf_counter() - started) * 1000, **settings)
 
 
 def governed_candidates(columns, key, fp_rate, fn_rate, rng):
@@ -271,15 +312,17 @@ def governed_candidates(columns, key, fp_rate, fn_rate, rng):
     return candidates
 
 
-def route_governed(columns, key, fp_rate, fn_rate, rng):
+def route_governed(columns, key, fp_rate, fn_rate, rng, **settings):
     """Governed catalog returns classifier CANDIDATES, not ground truth.
 
     True Gov-ID columns plus decoys the classifier flagged in error. The model must still
     discriminate, so precision here is earned rather than assumed."""
+    started = time.perf_counter()
     candidates = governed_candidates(columns, key, fp_rate, fn_rate, rng)
-    return _call_route(f"A governed metadata catalog classifier flagged these {len(candidates)} columns "
-                      f"as possibly Government-ID related (the classifier is imperfect — some are "
-                      f"false positives):\n" + "\n".join(candidates) + f"\n\n{TASK}")
+    prompt = (f"A governed metadata catalog classifier flagged these {len(candidates)} columns "
+              f"as possibly Government-ID related (the classifier is imperfect — some are "
+              f"false positives):\n" + "\n".join(candidates) + f"\n\n{TASK}")
+    return _call_route(prompt, preparation_ms=(time.perf_counter() - started) * 1000, **settings)
 
 
 ROUTES = [("ungoverned (context-stuffing)", route_ungoverned),
@@ -292,6 +335,43 @@ def randomized_routes(seed):
     ordered = ROUTES[:]
     random.Random(seed + 200_000).shuffle(ordered)
     return ordered
+
+
+def preflight_context(tiers, seed, classifier_fp_rate, classifier_fn_rate, context_window_tokens,
+                      max_tokens):
+    """Refuse R2 collection before a constructed route can exceed its declared context budget.
+
+    The byte count is deliberately an upper bound rather than a provider usage value: a provider
+    may silently truncate before reporting prompt usage.  A passing result is therefore a
+    conservative fit proof for byte-oriented/BPE tokenizers, and the method is retained.
+    """
+    rows = []
+    for tier in tiers:
+        columns, key = build_catalog(tier, seed)
+        for name, route in ROUTES:
+            rng = random.Random(f"{seed}:{name}:candidate-set")
+            if name.startswith("ungoverned"):
+                prompt = f"Here is the full data catalog ({len(columns)} columns):\n" + \
+                         "\n".join(c["fqname"] for c in columns) + f"\n\n{TASK}"
+            elif name.startswith("lexical"):
+                candidates = lexical_candidates(columns)
+                prompt = (f"A cheap name-only lexical prefilter selected these {len(candidates)} columns "
+                          f"as potentially Government-ID related:\n" + "\n".join(candidates) + f"\n\n{TASK}")
+            else:
+                candidates = governed_candidates(columns, key, classifier_fp_rate, classifier_fn_rate, rng)
+                prompt = (f"A governed metadata catalog classifier flagged these {len(candidates)} columns "
+                          f"as possibly Government-ID related (the classifier is imperfect — some are "
+                          f"false positives):\n" + "\n".join(candidates) + f"\n\n{TASK}")
+            upper_bound = len(prompt.encode("utf-8"))
+            rows.append({"tier": tier, "seed": seed, "route": name,
+                         "constructed_input_token_count": upper_bound,
+                         "token_count_method": "utf8_byte_upper_bound",
+                         "context_window_tokens": context_window_tokens,
+                         "requested_completion_tokens": max_tokens,
+                         "fits_context_budget": upper_bound + max_tokens <= context_window_tokens})
+    failures = [row for row in rows if not row["fits_context_budget"]]
+    return {"schema_version": "1.0", "artifact_type": "token-bleed-context-preflight",
+            "rows": rows, "passed": not failures, "failures": failures}
 
 
 def aggregate(rows):
@@ -339,7 +419,7 @@ def write_report(path, model, args, rows):
     if not path:
         return
     with open(path, "w") as fh:
-        json.dump({"schema_version": "1.0", "requested_model": model, "seed": args.seed,
+        json.dump({"schema_version": "2.0" if getattr(args, "r2", False) else "1.0", "requested_model": model, "seed": args.seed,
                    "replicates": args.replicates,
                    "classifier_fp_rate": args.classifier_fp_rate,
                    "classifier_fn_rate": args.classifier_fn_rate,
@@ -350,6 +430,12 @@ def write_report(path, model, args, rows):
                    "classifier_recall_assumed_perfect": args.classifier_fn_rate == 0,
                    "token_param_used": _TOKEN_PARAM,   # which max-token name the endpoint accepted
                    "call_timeout_s": _TIMEOUT,
+                   "r2_context_window_tokens": getattr(args, "context_window_tokens", None),
+                   "requested_completion_tokens": getattr(args, "max_completion_tokens", 3000),
+                   "r2_provenance": {"endpoint_class": getattr(args, "endpoint_class", None),
+                                     "model_digest": getattr(args, "model_digest", None),
+                                     "runtime_version": getattr(args, "runtime_version", None),
+                                     "hardware": getattr(args, "hardware", None)},
                    "results": rows, "aggregate": aggregate(rows)}, fh, indent=2)
 
 
@@ -375,12 +461,32 @@ def main():
                     help="store raw model responses in the report for a full scorer audit. "
                          "Without this, reports retain response hashes, parsed answers, and answer keys.")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--r2", action="store_true",
+                    help="enable the R2 fail-closed evidence schema and context preflight")
+    ap.add_argument("--context-window-tokens", type=int,
+                    help="declared runtime context budget; required with --r2")
+    ap.add_argument("--max-completion-tokens", type=int, default=3000,
+                    help="requested completion budget, included in R2 context proof")
+    ap.add_argument("--preflight-out", default=None,
+                    help="write R2 context-budget preflight JSON before any model call")
+    ap.add_argument("--preflight-only", action="store_true",
+                    help="write and validate the R2 context proof, then exit before model calls")
+    ap.add_argument("--endpoint-class", help="R2 endpoint class, e.g. local-openai-compatible")
+    ap.add_argument("--model-digest", help="R2 immutable model digest from the serving runtime")
+    ap.add_argument("--runtime-version", help="R2 serving-runtime version, e.g. Ollama version")
+    ap.add_argument("--hardware", help="R2 hardware/OS identifier retained in report provenance")
     args = ap.parse_args()
 
     if args.classifier_fp_rate < 0:
         die("--classifier-fp-rate must be non-negative")
     if not 0 <= args.classifier_fn_rate <= 1:
         die("--classifier-fn-rate must be between 0 and 1")
+    if args.r2 and (not args.context_window_tokens or args.context_window_tokens <= 0):
+        die("--r2 requires a positive --context-window-tokens")
+    if args.r2 and not all((args.endpoint_class, args.model_digest, args.runtime_version, args.hardware)):
+        die("--r2 requires --endpoint-class, --model-digest, --runtime-version, and --hardware")
+    if args.max_completion_tokens <= 0:
+        die("--max-completion-tokens must be positive")
 
     global _TIMEOUT
     if args.timeout is not None:
@@ -390,6 +496,19 @@ def main():
         print(f"{C['WARN']}WARNING: --classifier-fp-rate 0 gives the governed route the exact answer "
               f"key. It measures transcription, not retrieval. Do not publish this as a benchmark."
               f"{C['R']}\n", file=sys.stderr)
+
+    if args.r2:
+        preflight = preflight_context(args.tiers, args.seed, args.classifier_fp_rate,
+                                      args.classifier_fn_rate, args.context_window_tokens,
+                                      args.max_completion_tokens)
+        if args.preflight_out:
+            with open(args.preflight_out, "w") as fh:
+                json.dump(preflight, fh, indent=2)
+        if not preflight["passed"]:
+            die("R2 context preflight failed; no model calls were made")
+        if args.preflight_only:
+            print(f"{C['OK']}R2 context preflight passed; no model calls were made.{C['R']}")
+            return
 
     model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
     print(f"{C['HD']}Token-Bleed Benchmark — model={model}{C['R']}")
@@ -411,9 +530,11 @@ def main():
             for position, (name, fn) in enumerate(ordered_routes, start=1):
                 # Candidate sampling is route-specific so execution order cannot perturb it.
                 route_rng = random.Random(f"{seed}:{name}:candidate-set")
-                r = fn(columns, key, args.classifier_fp_rate, args.classifier_fn_rate, route_rng)
-                parsed = parse_answer(r["content"], all_fq)
-                sc = score(parsed, key)
+                r = fn(columns, key, args.classifier_fp_rate, args.classifier_fn_rate, route_rng,
+                       context_window_tokens=args.context_window_tokens if args.r2 else None,
+                       max_tokens=args.max_completion_tokens)
+                parsed = parse_answer(r["content"], all_fq) if r["success"] else set()
+                sc = score(parsed, key) if r["success"] else dict(tp=0, fp=0, fn=len(key), precision=0.0, recall=0.0, f1=0.0)
                 col = C['OK'] if name.startswith("governed") else C['WARN']
                 print(f"    {col}{name:<32}{C['R']} prompt={r['prompt_tokens']:>7,} total={r['total_tokens']:>7,}  F1={sc['f1']:.3f}  "
                       f"{C['DIM']}(P={sc['precision']} R={sc['recall']}){C['R']}")
@@ -423,15 +544,24 @@ def main():
                              "requested_model": model, "returned_model": r["returned_model"],
                              "prompt_sha256": r["prompt_sha256"],
                              "response_sha256": hashlib.sha256(r["content"].encode()).hexdigest(),
+                             "success": r["success"], "attempts": r["attempts"],
+                             "error_message": r.get("error_message"),
                              "scorer_audit": {"parsed_answers": sorted(parsed),
                                               "answer_key": sorted(key)},
                              **{k: r[k] for k in ("prompt_tokens", "completion_tokens",
-                                                  "reasoning_tokens", "total_tokens", "latency_s")},
+                                                  "reasoning_tokens", "total_tokens", "latency_s",
+                                                  "route_preparation_ms", "constructed_input_token_count",
+                                                  "context_window_tokens", "requested_completion_tokens",
+                                                  "prompt_truncated_by_context")},
+                             "token_count_method": r["token_count_method"],
                              **sc})
                 if args.retain_responses:
                     rows[-1]["model_response"] = r["content"]
                 write_report(args.out, model, args, rows)   # incremental: a 429 later keeps this
-        agg = {a["route"]: a for a in aggregate([r for r in rows if r["tier"] == n])}
+        agg = {a["route"]: a for a in aggregate([r for r in rows if r["tier"] == n and r["success"]])}
+        if set(agg) != {name for name, _ in ROUTES}:
+            print(f"{C['BAD']}  incomplete route results at tier {n}; retained failures prevent a comparative summary{C['R']}")
+            continue
         ug, gv = agg["ungoverned (context-stuffing)"], agg["governed (metadata layer)"]
         mult = (ug["prompt_tokens_mean"] / gv["prompt_tokens_mean"]) if gv["prompt_tokens_mean"] else 0
         print(f"  {C['HD']}--> governed used {mult:.1f}x fewer prompt tokens (mean of {ug['replicates']}), "
