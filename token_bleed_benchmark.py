@@ -56,6 +56,7 @@ The endpoint must accept an OpenAI-style POST {base_url}/chat/completions and re
 `usage` block. Works with OpenAI, Azure OpenAI (v1 path), and gateways that proxy them.
 """
 import argparse, datetime, hashlib, importlib.metadata, json, os, random, re, subprocess, sys, time, urllib.error, urllib.request
+from urllib.parse import urlsplit, urlunsplit
 
 GOV_ID_COLUMNS = ["SSN", "SUBJECT_SSN", "ID_DOC_NUMBER", "NATIONAL_ID", "PASSPORT_NO", "SSN_LAST4"]
 DECOY_COLUMNS  = ["TAX_ID", "LICENSE_NO", "DOC_TYPE", "ACCOUNT_NO", "ROUTING_NO", "CUSTOMER_REF"]
@@ -78,6 +79,11 @@ if not sys.stdout.isatty():
 
 # Which max-token parameter this endpoint accepts. Probed once, then cached.
 _TOKEN_PARAM = None
+
+# Endpoint-specific request settings.  R2 uses this for Ollama's `options.num_ctx`;
+# the value is retained separately, and must be verified from Ollama's runtime API
+# before collection begins.
+_REQUEST_OPTIONS = None
 
 # Per-call HTTP timeout in seconds. Overridden by --timeout / OPENAI_TIMEOUT for slower
 # local/self-hosted models (a large context-stuffing prompt on a local model can exceed the
@@ -164,6 +170,8 @@ def call_model(prompt, max_tokens=3000, retries=4):
         for param in candidates:
             payload = {"messages": [{"role": "user", "content": prompt}], "model": model,
                        param: max_tokens}
+            if _REQUEST_OPTIONS:
+                payload["options"] = _REQUEST_OPTIONS
             try:
                 j = _post(payload, base, key)
                 _TOKEN_PARAM = param
@@ -374,6 +382,38 @@ def preflight_context(tiers, seed, classifier_fp_rate, classifier_fn_rate, conte
             "rows": rows, "passed": not failures, "failures": failures}
 
 
+def verify_ollama_runtime_context(required_context_tokens):
+    """Load the configured model with `num_ctx`, then verify Ollama's live context length.
+
+    A declared context budget is not evidence by itself: Ollama can serve a model at a lower
+    default.  This one-token configuration probe is not a benchmark trial.  It makes the model
+    resident with the requested option and reads `/api/ps`, whose `context_length` describes the
+    live runner.  Any unavailable or undersized value is a commissioning failure.
+    """
+    model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+    probe = call_model("Reply only: OK", max_tokens=1, retries=1)
+    if not probe["success"]:
+        die("R2 Ollama context probe failed; no benchmark trials were run")
+    base = os.environ.get("OPENAI_BASE_URL", "http://localhost:11434/v1").rstrip("/")
+    parts = urlsplit(base)
+    api_path = parts.path[:-3] if parts.path.endswith("/v1") else parts.path
+    ps_url = urlunsplit((parts.scheme, parts.netloc, f"{api_path}/api/ps", "", ""))
+    try:
+        with urllib.request.urlopen(ps_url, timeout=_TIMEOUT) as response:
+            running = json.loads(response.read().decode())
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError) as exc:
+        die(f"cannot verify R2 Ollama runtime context through /api/ps: {exc}")
+    matches = [entry for entry in running.get("models", [])
+               if entry.get("name") == model or entry.get("model") == model]
+    context_length = matches[0].get("context_length") if matches else None
+    if not isinstance(context_length, int) or context_length < required_context_tokens:
+        die("R2 Ollama runtime context is missing or below the declared context budget "
+            f"(required={required_context_tokens}, actual={context_length!r})")
+    return {"probe_prompt": "Reply only: OK", "returned_model": probe["returned_model"],
+            "requested_num_ctx": _REQUEST_OPTIONS.get("num_ctx") if _REQUEST_OPTIONS else None,
+            "observed_context_length": context_length, "api": "/api/ps"}
+
+
 def aggregate(rows):
     """Collapse replicate rows into distributions and normal-approximation 95% CIs."""
     out = {}
@@ -432,6 +472,9 @@ def write_report(path, model, args, rows):
                    "call_timeout_s": _TIMEOUT,
                    "r2_context_window_tokens": getattr(args, "context_window_tokens", None),
                    "requested_completion_tokens": getattr(args, "max_completion_tokens", 3000),
+                   "r2_execution": {"per_call_timeout_s": _TIMEOUT,
+                                    "ollama_num_ctx_requested": getattr(args, "ollama_num_ctx", None),
+                                    "runtime_context_probe": getattr(args, "runtime_context_probe", None)},
                    "r2_provenance": {"endpoint_class": getattr(args, "endpoint_class", None),
                                      "model_digest": getattr(args, "model_digest", None),
                                      "runtime_version": getattr(args, "runtime_version", None),
@@ -475,6 +518,10 @@ def main():
     ap.add_argument("--model-digest", help="R2 immutable model digest from the serving runtime")
     ap.add_argument("--runtime-version", help="R2 serving-runtime version, e.g. Ollama version")
     ap.add_argument("--hardware", help="R2 hardware/OS identifier retained in report provenance")
+    ap.add_argument("--ollama-num-ctx", type=int,
+                    help="R2 local-Ollama context setting sent as options.num_ctx on every request")
+    ap.add_argument("--verify-ollama-context", action="store_true",
+                    help="R2-only: configuration-probe Ollama and require /api/ps to confirm its live context")
     args = ap.parse_args()
 
     if args.classifier_fp_rate < 0:
@@ -485,12 +532,20 @@ def main():
         die("--r2 requires a positive --context-window-tokens")
     if args.r2 and not all((args.endpoint_class, args.model_digest, args.runtime_version, args.hardware)):
         die("--r2 requires --endpoint-class, --model-digest, --runtime-version, and --hardware")
+    if args.r2 and args.timeout is None:
+        die("--r2 requires an explicit --timeout so its execution policy is frozen")
+    if args.r2 and (not args.ollama_num_ctx or args.ollama_num_ctx < args.context_window_tokens):
+        die("--r2 requires --ollama-num-ctx at least as large as --context-window-tokens")
+    if args.r2 and not args.verify_ollama_context:
+        die("--r2 requires --verify-ollama-context to confirm the live Ollama context setting")
     if args.max_completion_tokens <= 0:
         die("--max-completion-tokens must be positive")
 
-    global _TIMEOUT
+    global _TIMEOUT, _REQUEST_OPTIONS
     if args.timeout is not None:
         _TIMEOUT = args.timeout
+    if args.r2:
+        _REQUEST_OPTIONS = {"num_ctx": args.ollama_num_ctx}
 
     if args.classifier_fp_rate == 0:
         print(f"{C['WARN']}WARNING: --classifier-fp-rate 0 gives the governed route the exact answer "
@@ -501,6 +556,8 @@ def main():
         preflight = preflight_context(args.tiers, args.seed, args.classifier_fp_rate,
                                       args.classifier_fn_rate, args.context_window_tokens,
                                       args.max_completion_tokens)
+        args.runtime_context_probe = verify_ollama_runtime_context(args.context_window_tokens)
+        preflight["runtime_context_probe"] = args.runtime_context_probe
         if args.preflight_out:
             with open(args.preflight_out, "w") as fh:
                 json.dump(preflight, fh, indent=2)

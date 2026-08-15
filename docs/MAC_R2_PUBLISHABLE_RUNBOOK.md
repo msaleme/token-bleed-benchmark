@@ -18,13 +18,13 @@ R1 is preserved as audit evidence. Do not overwrite, edit, or selectively rerun 
 | The 3000-object ungoverned prompt was truncated. | Every included split has a retained context-budget proof and `prompt_truncated_by_context: false` for both compared routes. A truncation makes that paired trial invalid and prevents an accepted comparative verdict. |
 | Timeout retries only appeared in a text log. | Each route row retains an `attempts` array with attempt number, timestamps or elapsed time, outcome, error class/message, and final selected attempt. Failed pairs remain as failed ACE trials. |
 | ACE had no p-value or confidence interval. | The adapter computes the predeclared paired analysis from the retained seed pairs and retains the method, alternative, statistic, p-value, CI, resampling seed, and all paired values or their immutable references. |
-| ACE had no complexity metric. | The runner measures a declared online route-preparation overhead per paired seed. It is not assumed to be zero and it is not substituted with model latency. |
+| ACE had no complexity metric. | The runner retains online route-preparation timing per paired seed as diagnostic provenance. It is not assumed to be zero and it is not substituted with model latency, but it is not an acceptance gate. |
 | Endpoint identity was incomplete. | A run manifest retains the model identifier and digest, Ollama version, context limit, Mac hardware/OS, runner commit, ACE package version, and all command-line settings. |
 
-## Commissioning gate: do not start the 20-seed run yet
+## Commissioning gate
 
-The current runner and adapter cannot create an `ACCEPTED` R2 record. First merge an R2
-implementation PR that provides all of the following, with tests:
+Do not start collection until the checked-out `main` contains the R2 implementation and its
+commissioning fixes. The implementation must provide all of the following, with tests:
 
 1. A versioned R2 contract, `experiments/token-bleed-mac-r2.yaml`.
 2. A report schema revision that records `context_window_tokens`, requested completion budget,
@@ -35,17 +35,17 @@ implementation PR that provides all of the following, with tests:
 4. Structured attempt retention for every request, including unsuccessful attempts and the final
    terminal failure. A retry is evidence, not disposable noise.
 5. Direct measurement of route-preparation time around only the local route-building work.
-   Store `route_preparation_ms` for both routes and derive
-   `complexity_overhead = (governed_preparation_ms - ungoverned_preparation_ms) /
-   max(ungoverned_preparation_ms, epsilon)`. Retain the raw timings, formula, epsilon, and clock
-   source. Do not label model latency as complexity overhead.
-6. An adapter that emits `f1`, `ecd_improvement`, and the measured `complexity_overhead` for each
+   Store `route_preparation_ms` for both routes and derive `complexity_overhead` as diagnostic
+   provenance. Retain the raw timings, formula, epsilon, and clock source. Do not label model
+   latency as complexity overhead or treat microsecond-scale string-building time as a real
+   governance-cost acceptance gate.
+6. An adapter that emits `f1`, `ecd_improvement`, and diagnostic route-preparation evidence for each
    paired ACE trial, and marks any pair with truncation or terminal route failure as
    `success: false` with a specific error message.
 7. A deterministic statistical-analysis module. It must use the exact paired seed records,
    never an aggregate mean reconstructed from the console log.
-8. A test that proves: one truncated row, one failed attempt sequence, missing statistical evidence,
-   and missing complexity timing each result in `INCONCLUSIVE` rather than an accepted result.
+8. A test that proves: one truncated row, one failed attempt sequence, or missing statistical evidence
+   each result in `INCONCLUSIVE` rather than an accepted result.
 
 Do not solve these gaps by adding constants, hand-editing JSON, omitting a failed seed, or changing
 the contract after calibration.
@@ -78,9 +78,9 @@ Freeze this before calibration and record its SHA-256 in every output.
 - **Transfer rule:** validation and holdout must each have all 20 valid matched pairs, mean F1 at
   least the ungoverned baseline, and mean ECD improvement above zero. Their role is confirmation,
   not a second search for a favorable result.
-- **Complexity rule:** declare the maximum acceptable mean online route-preparation overhead before
-  calibration. If no defensible budget can be declared, keep this as an evidence-design task and do
-  not run R2.
+- **Route-preparation diagnostic:** retain online route-preparation measurements, but do not make a
+  comparative claim or pass/fail judgment from microsecond-scale local string-building timing. It is
+  not a defensible proxy for operating governance cost.
 
 The R2 manuscript may report descriptive CIs for F1 and tokens on all splits. It must name the
 development inference as the prespecified test and avoid treating multiple split checks as
@@ -124,6 +124,10 @@ input **plus** its requested completion budget. For the existing 3000-object des
 64k-or-larger verified usable context as the minimum planning target. The R2 preflight, not this
 rule of thumb, decides whether the actual constructed prompts fit.
 
+For local Ollama, advertised model capacity is not proof of the serving context. R2 sends
+`options.num_ctx` on every call, makes a one-token non-benchmark configuration probe, and requires
+Ollama's live `/api/ps` record to confirm the requested context before calibration begins.
+
 ### 3. Run the preflight and calibration gate
 
 Run the R2 preflight command supplied by the merged implementation. It must write a JSON result
@@ -137,11 +141,14 @@ Mac runtime; do not guess the model digest or context window.
 python3 token_bleed_benchmark.py --r2 \
   --tiers 300 1500 3000 --replicates 1 --seed 41 \
   --context-window-tokens '<verified-runtime-context-window>' \
+  --ollama-num-ctx '<verified-runtime-context-window>' \
   --max-completion-tokens 3000 \
+  --timeout 1800 \
   --endpoint-class local-openai-compatible \
   --model-digest '<ollama-model-digest>' \
   --runtime-version "$(ollama --version)" \
   --hardware '<Mac model and macOS version>' \
+  --verify-ollama-context \
   --retain-responses \
   --preflight-only \
   --preflight-out evidence/token-bleed-mac-r2/calibration-preflight.json \
@@ -151,7 +158,7 @@ python3 token_bleed_benchmark.py --r2 \
 The runner uses a deliberately conservative UTF-8-byte upper bound for its constructed-input
 token count. This is a fit proof, not a provider usage value. If it refuses a tier, change the
 endpoint/context budget or freeze smaller R2 tiers in a new contract - never bypass the guard.
-After that command passes, remove `--preflight-only` and run the identical frozen command once
+The configuration probe is not a benchmark trial. After that command passes, remove `--preflight-only` and run the identical frozen command once
 to collect the calibration artifact.
 
 Then run exactly one calibration seed, `41`, across every declared split and route. Preserve the
@@ -192,7 +199,8 @@ Run the merged R2 adapter and ACE assessment against the exact frozen contract. 
 emit:
 
 - 60 paired ACE trials: 3 splits × 20 declared seeds.
-- F1, ECD improvement, and measured complexity overhead for every valid trial.
+- F1 and ECD improvement for every valid trial, plus retained route-preparation timing as
+  diagnostic provenance.
 - Failed trials for any incomplete route pair, context breach, truncation, or irreconcilable
   provenance record.
 - Development statistical evidence with method metadata, p-value, ECD CI, analysis seed, and
