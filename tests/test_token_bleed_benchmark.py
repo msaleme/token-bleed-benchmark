@@ -100,6 +100,20 @@ class ReportTests(unittest.TestCase):
         self.assertLess(summary["f1_ci95_low"], summary["f1_mean"])
         self.assertGreater(summary["f1_ci95_high"], summary["f1_mean"])
 
+    def test_r2_context_preflight_refuses_oversized_constructed_input(self):
+        result = benchmark.preflight_context(
+            [300], 42, 1.0, 0.0, context_window_tokens=100, max_tokens=10
+        )
+        self.assertFalse(result["passed"])
+        self.assertTrue(result["failures"])
+        self.assertEqual(result["rows"][0]["token_count_method"], "utf8_byte_upper_bound")
+
+    def test_r2_runtime_context_guard_retains_a_failed_attempt_without_calling_provider(self):
+        result = benchmark._call_route("x" * 101, context_window_tokens=100, max_tokens=1)
+        self.assertFalse(result["success"])
+        self.assertEqual(result["attempts"][0]["outcome"], "context_preflight_refused")
+        self.assertIsNone(result["prompt_truncated_by_context"])
+
 
 class ParsingTests(unittest.TestCase):
     def test_negated_column_is_not_scored_as_an_answer(self):

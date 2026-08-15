@@ -130,6 +130,30 @@ Run the R2 preflight command supplied by the merged implementation. It must writ
 and exit nonzero if any compared route exceeds context budget or if endpoint/model provenance is
 missing.
 
+The current implementation uses this form. Substitute values only with values recorded from the
+Mac runtime; do not guess the model digest or context window.
+
+```bash
+python3 token_bleed_benchmark.py --r2 \
+  --tiers 300 1500 3000 --replicates 1 --seed 41 \
+  --context-window-tokens '<verified-runtime-context-window>' \
+  --max-completion-tokens 3000 \
+  --endpoint-class local-openai-compatible \
+  --model-digest '<ollama-model-digest>' \
+  --runtime-version "$(ollama --version)" \
+  --hardware '<Mac model and macOS version>' \
+  --retain-responses \
+  --preflight-only \
+  --preflight-out evidence/token-bleed-mac-r2/calibration-preflight.json \
+  --out evidence/token-bleed-mac-r2/calibration.json
+```
+
+The runner uses a deliberately conservative UTF-8-byte upper bound for its constructed-input
+token count. This is a fit proof, not a provider usage value. If it refuses a tier, change the
+endpoint/context budget or freeze smaller R2 tiers in a new contract - never bypass the guard.
+After that command passes, remove `--preflight-only` and run the identical frozen command once
+to collect the calibration artifact.
+
 Then run exactly one calibration seed, `41`, across every declared split and route. Preserve the
 complete calibration report. Continue only if all of the following are true:
 
