@@ -38,11 +38,12 @@ each route, so you can see the gap on your own endpoint.
 
 > *"Show me all the assets needed to build a report that involves Government ID."*
 
-Two routes answer it against the **same** synthetic catalog:
+Three routes answer it against the **same** synthetic catalog:
 
 | Route | How it reaches the data |
 |---|---|
 | **Ungoverned** (context stuffing) | The entire raw column catalog is dumped into the prompt. |
+| **Lexical prefilter** (cheap baseline) | A name-only regex selects fields containing `SSN`, `NATIONAL_ID`, or `PASSPORT`; no metadata classifier or semantics. |
 | **Governed** (metadata layer) | A classifier ran once, up front. The model receives its **candidate** set — true Gov-ID columns **mixed with decoys the classifier flagged in error** — and must still discriminate. |
 
 Both are scored with Precision / Recall / F1 against the frozen key.
@@ -65,7 +66,7 @@ export OPENAI_BASE_URL="https://api.openai.com/v1"   # or Azure OpenAI v1, or a 
 export OPENAI_API_KEY="sk-..."
 export OPENAI_MODEL="gpt-4o-mini"
 
-python3 token_bleed_benchmark.py --tiers 300 1500 3000 --replicates 3 --out report.json
+python3 token_bleed_benchmark.py --tiers 300 1500 3000 --replicates 20 --out report.json --retain-responses
 ```
 
 For a recall sensitivity check, add `--classifier-fn-rate 0.1`. This omits 10% of true
@@ -85,12 +86,15 @@ writes `--out` incrementally so a late rate-limit doesn't discard completed tier
 | `--replicates N` | `1` | Runs each tier against **N different catalog seeds**. F1 over a few dozen true positives is noisy — at 300 objects there are ~5, so one miss moves F1 by ~0.15. Re-running a single frozen catalog only varies model output, not the data. Use ≥3 before quoting anything. |
 | `--classifier-fp-rate R` | `1.0` | Decoys the governed classifier flags per true positive. Raise it to model a less precise classifier. |
 | `--classifier-fn-rate R` | `0.0` | Fraction of true Government-ID columns the synthetic classifier omits. Use this sensitivity control to expose the perfect-recall assumption; it is not calibrated to a particular classifier. |
+| `--retain-responses` | off | Stores raw responses for full scorer audit. Reports always retain answer keys, parsed answers, and response hashes. |
 | `--timeout S` | `120` (or `OPENAI_TIMEOUT`) | Per-call HTTP timeout. **Raise it for slower local/self-hosted models** — a large context-stuffing prompt (the ungoverned route at the bigger tiers) can take several minutes on a local model and will otherwise time out all retries and abort the run. Hosted APIs rarely need it. |
 | `--tiers`, `--seed`, `--out` | `300 1500 3000`, `42`, none | — |
 
-Results print mean and \[min–max\] across replicates; `report.json` carries both the per-run
-rows and an `aggregate` block, plus `token_param_used` (which max-token name the endpoint accepted)
-and `call_timeout_s`.
+Results print mean and \[min–max\] across replicates; `report.json` carries each run plus an
+aggregate distribution and approximate 95% confidence intervals. It records requested and returned
+model IDs, prompt and response hashes, route order, seed, commit, package versions, timestamp,
+token fields, and scorer-audit data. Prompt tokens are the primary context-cost metric. Run at least
+20 seeds per endpoint and retain the report before making a comparative claim.
 
 > **Running against a local model (Ollama, vLLM, LM Studio)?** Point `OPENAI_BASE_URL` at it
 > (e.g. `http://localhost:11434/v1` for Ollama; `OPENAI_API_KEY` can be any non-empty string —
@@ -104,33 +108,38 @@ and `call_timeout_s`.
 1. `build_catalog(n, seed)` — generates the synthetic catalog (deduplicated) and freezes the
    answer key.
 2. `route_ungoverned` — stuffs the full catalog into the prompt.
-3. `route_governed` — passes the classifier's candidate set: true positives plus flagged
+3. `route_lexical` — gives the model candidates from a deliberately cheap, name-only regex.
+4. `route_governed` — passes the classifier's candidate set: true positives plus flagged
    decoys. Classification happening once at ingestion is the structural advantage a real
    governed catalog provides.
-4. `score` — Precision / Recall / F1 vs. the frozen key. Answers are parsed as whole
+5. `score` — Precision / Recall / F1 vs. the frozen key. Answers are parsed as whole
    `TABLE.COLUMN` tokens, line by line, skipping lines that negate — otherwise a model that
    restates "do not include X.TAX_ID" gets scored as having answered `X.TAX_ID`.
 
 ## Interpreting your numbers honestly
 
-- **Model non-determinism:** re-runs vary. Use `--replicates 3` or more; the *trend* (governed
-  cheaper and more accurate as data scales) is the robust signal, not any single number.
+- **Model non-determinism:** re-runs vary. Use at least 20 distinct seeds per endpoint and report
+  the distribution and confidence interval, not a one-point F1 result. Route order is randomized
+  per seed to reduce warm-state, cache, and rate-behavior bias.
 - **Classifier recall is assumed perfect by default.** Every true Gov-ID column reaches the
   governed candidate set unless you set `--classifier-fn-rate`. Real classifiers miss things,
   and a miss is unrecoverable because the model never sees the raw catalog. Run a sensitivity
   case with a nonzero false-negative rate before making an accuracy claim; this is the assumption
   most favourable to the governed route. The control is not calibrated to any real classifier.
-- **The synthetic positive count varies by seed.** The report records `catalog_columns` and
-  `answer_key_count` for every route/seed. At smaller tiers, use more than three distinct seeds
-  before drawing an accuracy conclusion, and report the range rather than a single F1.
+- **Class prevalence is fixed by tier.** Every seed within a tier has the same count of planted
+  positives and lexical decoys. This reduces a major source of F1 variance but does not make this
+  a production corpus.
 - **The governed token count is a marginal query cost, not total cost of ownership.** It
   excludes building and maintaining the catalog. The honest question for a buyer is the payback
   volume: at what query rate does classification amortise? This harness does not answer that.
 - **This is a floor, not a ceiling:** a real governed catalog also handles freshness, lineage,
   and proprietary classifiers this toy harness doesn't model.
-- **Two routes is not the whole space.** Context stuffing is a weak baseline. A competitive
-  comparison would add embedding retrieval over the catalog, or a plain regex prefilter — if a
-  ten-line heuristic captures most of the benefit, that is the more interesting result.
+- **The cheap baseline matters.** If the lexical prefilter captures most of the advantage, the
+  honest result is about filtering labels, not governed metadata. This benchmark does not include
+  embedding retrieval or production metadata implementation costs.
+- **Claim boundary:** this is a synthetic, query-time classification benchmark. It does not
+  establish production ROI, catalog implementation cost, freshness, lineage, security properties,
+  or a replication of the sponsored study.
 - **Cost:** multiply tokens by your provider's rate to get dollars. Small per-call gaps become
   large at production call volumes — that's the "token bleed."
 
