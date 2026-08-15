@@ -43,9 +43,11 @@ class TokenBleedToAceTests(unittest.TestCase):
                     rows.append({
                         "tier": tier, "seed": seed, "route": route, "success": True,
                         "attempts": [{"attempt": 1, "outcome": "success"}],
-                        "prompt_tokens": prompt, "f1": f1, "route_preparation_ms": preparation,
+                        "prompt_tokens": prompt, "completion_tokens": 10, "token_parameter": "max_tokens",
+                        "f1": f1, "route_preparation_ms": preparation,
                         "prompt_truncated_by_context": False, "context_window_tokens": 10000,
                         "constructed_input_token_count": 500, "requested_completion_tokens": 100,
+                        "completion_cap_enforced": True, "completion_cap_parameter": "max_tokens",
                     })
         with tempfile.TemporaryDirectory() as tmp:
             report, contract = Path(tmp) / "report.json", Path(tmp) / "token-bleed-mac-r2.yaml"
@@ -53,6 +55,8 @@ class TokenBleedToAceTests(unittest.TestCase):
                 "schema_version": "2.0", "git_commit": "abc123", "results": rows,
                 "r2_provenance": {"endpoint_class": "local", "model_digest": "sha256:x",
                                   "runtime_version": "test", "hardware": "test"},
+                "r2_execution": {"completion_cap_enforced": True,
+                                 "completion_cap_parameter": "max_tokens"},
             }))
             contract.write_text("experiment_id: token-bleed-mac-r2\n")
             evidence = adapter.convert(report, contract)
@@ -67,10 +71,12 @@ class TokenBleedToAceTests(unittest.TestCase):
             rows.append({
                 "tier": 300, "seed": 42, "route": route, "success": True,
                 "attempts": [{"attempt": 1, "outcome": "success"}], "prompt_tokens": 100,
+                "completion_tokens": 10, "token_parameter": "max_tokens",
                 "f1": 0.8, "route_preparation_ms": 1.0,
                 "prompt_truncated_by_context": route == adapter.ROUTE_UNGOVERNED,
                 "context_window_tokens": 10000, "constructed_input_token_count": 500,
                 "requested_completion_tokens": 100,
+                "completion_cap_enforced": True, "completion_cap_parameter": "max_tokens",
             })
         with tempfile.TemporaryDirectory() as tmp:
             report, contract = Path(tmp) / "report.json", Path(tmp) / "token-bleed-mac-r2.yaml"
@@ -78,8 +84,36 @@ class TokenBleedToAceTests(unittest.TestCase):
                 "schema_version": "2.0", "git_commit": "abc123", "results": rows,
                 "r2_provenance": {"endpoint_class": "local", "model_digest": "sha256:x",
                                   "runtime_version": "test", "hardware": "test"},
+                "r2_execution": {"completion_cap_enforced": True,
+                                 "completion_cap_parameter": "max_tokens"},
             }))
             contract.write_text("experiment_id: token-bleed-mac-r2\n")
             evidence = adapter.convert(report, contract)
         self.assertFalse(evidence["trials"][0]["success"])
         self.assertIn("truncated", evidence["trials"][0]["error_message"])
+
+    def test_r2_unenforced_completion_cap_fails_the_paired_trial(self):
+        rows = []
+        for route in (adapter.ROUTE_UNGOVERNED, adapter.ROUTE_GOVERNED):
+            rows.append({
+                "tier": 300, "seed": 42, "route": route, "success": True,
+                "attempts": [{"attempt": 1, "outcome": "success"}], "prompt_tokens": 100,
+                "completion_tokens": 101, "token_parameter": "max_completion_tokens",
+                "f1": 0.8, "route_preparation_ms": 1.0,
+                "prompt_truncated_by_context": False, "context_window_tokens": 10000,
+                "constructed_input_token_count": 500, "requested_completion_tokens": 100,
+                "completion_cap_enforced": False, "completion_cap_parameter": "max_completion_tokens",
+            })
+        with tempfile.TemporaryDirectory() as tmp:
+            report, contract = Path(tmp) / "report.json", Path(tmp) / "token-bleed-mac-r2-1.yaml"
+            report.write_text(json.dumps({
+                "schema_version": "2.0", "git_commit": "abc123", "results": rows,
+                "r2_provenance": {"endpoint_class": "local", "model_digest": "sha256:x",
+                                  "runtime_version": "test", "hardware": "test"},
+                "r2_execution": {"completion_cap_enforced": False,
+                                 "completion_cap_parameter": "max_completion_tokens"},
+            }))
+            contract.write_text("experiment_id: token-bleed-mac-r2-1\n")
+            evidence = adapter.convert(report, contract)
+        self.assertFalse(evidence["trials"][0]["success"])
+        self.assertIn("completion cap", evidence["trials"][0]["error_message"])

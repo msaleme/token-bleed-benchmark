@@ -80,6 +80,10 @@ if not sys.stdout.isatty():
 # Which max-token parameter this endpoint accepts. Probed once, then cached.
 _TOKEN_PARAM = None
 
+# R2 does not treat a request field being accepted as evidence that a server enforced it.
+# The commissioning probe below records observed cap behavior before any benchmark row runs.
+_COMPLETION_CAP_PROBE = None
+
 # Endpoint-specific request settings.  R2 uses this for Ollama's `options.num_ctx`;
 # the value is retained separately, and must be verified from Ollama's runtime API
 # before collection begins.
@@ -186,6 +190,7 @@ def call_model(prompt, max_tokens=3000, retries=4):
                         "completion_tokens": u.get("completion_tokens", 0) or 0,
                         "reasoning_tokens": det.get("reasoning_tokens", 0) or 0,
                         "total_tokens": u.get("total_tokens", 0) or 0,
+                        "token_parameter": param,
                         "latency_s": round(time.time() - t0, 2),
                         "attempts": attempts}
             except urllib.error.HTTPError as e:
@@ -269,6 +274,9 @@ def _call_route(prompt, *, preparation_ms=0, context_window_tokens=None, max_tok
     result["context_window_tokens"] = context_window_tokens
     result["requested_completion_tokens"] = max_tokens
     result["prompt_truncated_by_context"] = False
+    result["completion_cap_enforced"] = bool(_COMPLETION_CAP_PROBE and
+                                               _COMPLETION_CAP_PROBE.get("enforced"))
+    result["completion_cap_parameter"] = (_COMPLETION_CAP_PROBE or {}).get("token_parameter")
     return result
 
 
@@ -414,6 +422,29 @@ def verify_ollama_runtime_context(required_context_tokens):
             "observed_context_length": context_length, "api": "/api/ps"}
 
 
+def verify_completion_cap_enforcement(cap=8):
+    """Prove the server enforces a small requested completion cap before R2 collection.
+
+    Some OpenAI-compatible endpoints accept an unknown max-token field and silently ignore it.
+    This non-benchmark probe demands a long response, requires measured completion usage, and
+    fails closed unless the observed completion count is within the cap.
+    """
+    if cap <= 0:
+        raise ValueError("completion-cap probe requires a positive cap")
+    probe = call_model(
+        "Write at least two hundred distinct words explaining why exact output limits matter. "
+        "Do not stop early.", max_tokens=cap, retries=1)
+    completion_tokens = probe.get("completion_tokens")
+    token_parameter = probe.get("token_parameter")
+    enforced = (probe.get("success") is True and isinstance(completion_tokens, int) and
+                completion_tokens > 0 and completion_tokens <= cap and bool(token_parameter))
+    return {"probe_prompt": "long-output completion-cap probe", "requested_completion_tokens": cap,
+            "observed_completion_tokens": completion_tokens,
+            "token_parameter": token_parameter, "returned_model": probe.get("returned_model"),
+            "enforced": enforced, "failure_reason": None if enforced else
+            "endpoint did not return a positive measured completion count within the requested cap"}
+
+
 def aggregate(rows):
     """Collapse replicate rows into distributions and normal-approximation 95% CIs."""
     out = {}
@@ -474,7 +505,10 @@ def write_report(path, model, args, rows):
                    "requested_completion_tokens": getattr(args, "max_completion_tokens", 3000),
                    "r2_execution": {"per_call_timeout_s": _TIMEOUT,
                                     "ollama_num_ctx_requested": getattr(args, "ollama_num_ctx", None),
-                                    "runtime_context_probe": getattr(args, "runtime_context_probe", None)},
+                                    "runtime_context_probe": getattr(args, "runtime_context_probe", None),
+                                    "completion_cap_probe": getattr(args, "completion_cap_probe", None),
+                                    "completion_cap_enforced": bool((getattr(args, "completion_cap_probe", None) or {}).get("enforced")),
+                                    "completion_cap_parameter": (getattr(args, "completion_cap_probe", None) or {}).get("token_parameter")},
                    "r2_provenance": {"endpoint_class": getattr(args, "endpoint_class", None),
                                      "model_digest": getattr(args, "model_digest", None),
                                      "runtime_version": getattr(args, "runtime_version", None),
@@ -541,11 +575,15 @@ def main():
     if args.max_completion_tokens <= 0:
         die("--max-completion-tokens must be positive")
 
-    global _TIMEOUT, _REQUEST_OPTIONS
+    global _TIMEOUT, _REQUEST_OPTIONS, _TOKEN_PARAM, _COMPLETION_CAP_PROBE
     if args.timeout is not None:
         _TIMEOUT = args.timeout
     if args.r2:
         _REQUEST_OPTIONS = {"num_ctx": args.ollama_num_ctx}
+        # Ollama's OpenAI-compatible endpoint honors max_tokens but accepts and ignores
+        # max_completion_tokens. Force the known field, then prove it is actually enforced.
+        if args.endpoint_class == "local-openai-compatible":
+            _TOKEN_PARAM = "max_tokens"
 
     if args.classifier_fp_rate == 0:
         print(f"{C['WARN']}WARNING: --classifier-fp-rate 0 gives the governed route the exact answer "
@@ -556,13 +594,21 @@ def main():
         preflight = preflight_context(args.tiers, args.seed, args.classifier_fp_rate,
                                       args.classifier_fn_rate, args.context_window_tokens,
                                       args.max_completion_tokens)
+        if not preflight["passed"]:
+            if args.preflight_out:
+                with open(args.preflight_out, "w") as fh:
+                    json.dump(preflight, fh, indent=2)
+            die("R2 context preflight failed; no model calls were made")
         args.runtime_context_probe = verify_ollama_runtime_context(args.context_window_tokens)
+        args.completion_cap_probe = verify_completion_cap_enforcement()
+        _COMPLETION_CAP_PROBE = args.completion_cap_probe
         preflight["runtime_context_probe"] = args.runtime_context_probe
+        preflight["completion_cap_probe"] = args.completion_cap_probe
         if args.preflight_out:
             with open(args.preflight_out, "w") as fh:
                 json.dump(preflight, fh, indent=2)
-        if not preflight["passed"]:
-            die("R2 context preflight failed; no model calls were made")
+        if not args.completion_cap_probe["enforced"]:
+            die("R2 completion-cap probe failed; no benchmark trials were run")
         if args.preflight_only:
             print(f"{C['OK']}R2 context preflight passed; no model calls were made.{C['R']}")
             return

@@ -1,0 +1,25 @@
+experiment_id: token-bleed-mac-r2-1
+baseline: ungoverned-context-stuffing
+mutation_scope: [synthetic-catalog, route-selection, named-mac-local-endpoint]
+trials: 20
+quality_floor: {metric: f1, minimum_relative_to_baseline: 1.0}
+benchmark_sets:
+  development: [synthetic-catalog-300]
+  validation: [synthetic-catalog-1500]
+  holdout: [synthetic-catalog-3000]
+acceptance:
+  minimum_ecd_improvement: 0.0
+  require_statistical_significance: true
+  confidence_interval_excludes_zero: true
+  require_validation_transfer: true
+  require_holdout_pass: true
+reporting: {report_format: [json, markdown]}
+trial_configuration:
+  seeds: [42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61]
+telemetry_provenance: measured
+execution:
+  per_call_timeout_seconds: 1800
+  requested_completion_tokens: 3000
+  local_ollama_context_verification: required
+  completion_cap_enforcement: required
+  completion_cap_parameter: max_tokens

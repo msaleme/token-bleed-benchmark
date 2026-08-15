@@ -131,6 +131,42 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(observed["observed_context_length"], 65536)
         self.assertEqual(observed["requested_num_ctx"], 65536)
 
+    def test_r2_completion_cap_probe_requires_observed_cap(self):
+        with mock.patch.object(benchmark, "call_model", return_value={
+            "success": True, "completion_tokens": 8, "token_parameter": "max_tokens",
+            "returned_model": "test-model",
+        }):
+            observed = benchmark.verify_completion_cap_enforcement(cap=8)
+        self.assertTrue(observed["enforced"])
+        self.assertEqual(observed["token_parameter"], "max_tokens")
+
+    def test_r2_completion_cap_probe_fails_closed_if_server_exceeds_cap(self):
+        with mock.patch.object(benchmark, "call_model", return_value={
+            "success": True, "completion_tokens": 9, "token_parameter": "max_completion_tokens",
+            "returned_model": "test-model",
+        }):
+            observed = benchmark.verify_completion_cap_enforcement(cap=8)
+        self.assertFalse(observed["enforced"])
+
+    def test_local_ollama_uses_max_tokens_not_accept_and_ignore_parameter(self):
+        captured = []
+        def fake_post(payload, _base, _key, timeout=None):
+            captured.append(payload)
+            return {"model": "test-model", "choices": [{"message": {"content": "OK"}}],
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}}
+        previous = benchmark._TOKEN_PARAM
+        try:
+            benchmark._TOKEN_PARAM = "max_tokens"
+            with mock.patch.dict("os.environ", {"OPENAI_API_KEY": "test", "OPENAI_MODEL": "test-model"}, clear=False), \
+                 mock.patch.object(benchmark, "_post", side_effect=fake_post):
+                result = benchmark.call_model("test", max_tokens=8, retries=1)
+        finally:
+            benchmark._TOKEN_PARAM = previous
+        self.assertTrue(result["success"])
+        self.assertEqual(result["token_parameter"], "max_tokens")
+        self.assertEqual(captured[0]["max_tokens"], 8)
+        self.assertNotIn("max_completion_tokens", captured[0])
+
 
 class ParsingTests(unittest.TestCase):
     def test_negated_column_is_not_scored_as_an_answer(self):
