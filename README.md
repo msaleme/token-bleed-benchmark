@@ -68,6 +68,10 @@ export OPENAI_MODEL="gpt-4o-mini"
 python3 token_bleed_benchmark.py --tiers 300 1500 3000 --replicates 3 --out report.json
 ```
 
+For a recall sensitivity check, add `--classifier-fn-rate 0.1`. This omits 10% of true
+Government-ID columns from the synthetic classifier's candidate set. It is not a model of
+any specific classifier, but it makes the default perfect-recall assumption visible.
+
 Any endpoint that accepts an OpenAI-style `POST {OPENAI_BASE_URL}/chat/completions` and returns
 a `usage` block works — OpenAI, Azure OpenAI (v1 path), Gemini OpenAI-compat, or a gateway in
 front of them. The script probes both `max_completion_tokens` and `max_tokens` so it works
@@ -79,7 +83,8 @@ writes `--out` incrementally so a late rate-limit doesn't discard completed tier
 | Flag | Default | Why |
 |---|---|---|
 | `--replicates N` | `1` | Runs each tier against **N different catalog seeds**. F1 over a few dozen true positives is noisy — at 300 objects there are ~5, so one miss moves F1 by ~0.15. Re-running a single frozen catalog only varies model output, not the data. Use ≥3 before quoting anything. |
-| `--classifier-fp-rate R` | `1.0` | Decoys the governed classifier flags per true positive. Raise it to model a worse classifier. |
+| `--classifier-fp-rate R` | `1.0` | Decoys the governed classifier flags per true positive. Raise it to model a less precise classifier. |
+| `--classifier-fn-rate R` | `0.0` | Fraction of true Government-ID columns the synthetic classifier omits. Use this sensitivity control to expose the perfect-recall assumption; it is not calibrated to a particular classifier. |
 | `--timeout S` | `120` (or `OPENAI_TIMEOUT`) | Per-call HTTP timeout. **Raise it for slower local/self-hosted models** — a large context-stuffing prompt (the ungoverned route at the bigger tiers) can take several minutes on a local model and will otherwise time out all retries and abort the run. Hosted APIs rarely need it. |
 | `--tiers`, `--seed`, `--out` | `300 1500 3000`, `42`, none | — |
 
@@ -110,10 +115,14 @@ and `call_timeout_s`.
 
 - **Model non-determinism:** re-runs vary. Use `--replicates 3` or more; the *trend* (governed
   cheaper and more accurate as data scales) is the robust signal, not any single number.
-- **Classifier recall is assumed perfect.** Every true Gov-ID column reaches the governed
-  candidate set. Real classifiers miss things, and a miss is unrecoverable because the model
-  never sees the raw catalog. This assumption is the one most favourable to the governed route
-  — state it when you cite your numbers.
+- **Classifier recall is assumed perfect by default.** Every true Gov-ID column reaches the
+  governed candidate set unless you set `--classifier-fn-rate`. Real classifiers miss things,
+  and a miss is unrecoverable because the model never sees the raw catalog. Run a sensitivity
+  case with a nonzero false-negative rate before making an accuracy claim; this is the assumption
+  most favourable to the governed route. The control is not calibrated to any real classifier.
+- **The synthetic positive count varies by seed.** The report records `catalog_columns` and
+  `answer_key_count` for every route/seed. At smaller tiers, use more than three distinct seeds
+  before drawing an accuracy conclusion, and report the range rather than a single F1.
 - **The governed token count is a marginal query cost, not total cost of ownership.** It
   excludes building and maintaining the catalog. The honest question for a buyer is the payback
   volume: at what query rate does classification amortise? This harness does not answer that.

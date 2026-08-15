@@ -31,9 +31,10 @@ The governed route is NOT given the answer key
   A governed catalog in the real world returns CANDIDATES from a classifier, and the
   classifier is imperfect. So `route_governed` passes the true Government-ID columns
   MIXED WITH decoy columns the classifier flagged by mistake (`--classifier-fp-rate`,
-  default 1.0 = one false positive per true positive). The model still has to
-  discriminate; it can and does lose precision here. If the governed route were handed
-  only the true positives it would be transcribing an answer key, not retrieving.
+  default 1.0 = one false positive per true positive). `--classifier-fn-rate` can also
+  omit true positives to model imperfect recall. The model still has to discriminate;
+  it can and does lose precision. If the governed route were handed only the true
+  positives it would be transcribing an answer key, not retrieving.
 
   Stated assumption: classifier RECALL is modeled as perfect (every true Gov-ID column
   reaches the candidate set). That makes this a floor on the governed route's difficulty,
@@ -203,22 +204,37 @@ def score(found, key):
     return dict(tp=tp, fp=fp, fn=fn, precision=round(prec, 3), recall=round(rec, 3), f1=round(f1, 3))
 
 
-def route_ungoverned(columns, _key, _fp_rate, _rng):
+def route_ungoverned(columns, _key, _fp_rate, _fn_rate, _rng):
     catalog = "\n".join(c["fqname"] for c in columns)
     return call_model(f"Here is the full data catalog ({len(columns)} columns):\n{catalog}\n\n{TASK}")
 
 
-def route_governed(columns, key, fp_rate, rng):
+def governed_candidates(columns, key, fp_rate, fn_rate, rng):
+    """Return the synthetic classifier's candidate set.
+
+    `fn_rate` deliberately removes true Government-ID fields before the model sees the
+    candidate set. It is a sensitivity control, not a calibrated model of a particular
+    classifier. Keeping it explicit prevents a perfect-recall assumption from hiding in
+    the benchmark implementation.
+    """
+    gov = sorted(key)
+    n_fn = min(int(round(len(gov) * fn_rate)), len(gov))
+    omitted = set(rng.sample(gov, n_fn)) if n_fn else set()
+    visible_gov = [fq for fq in gov if fq not in omitted]
+    decoys = sorted(c["fqname"] for c in columns
+                    if not c["is_gov_id"] and c["fqname"].split(".", 1)[1] in DECOY_COLUMNS)
+    n_fp = min(int(round(len(gov) * fp_rate)), len(decoys))
+    candidates = visible_gov + rng.sample(decoys, n_fp)
+    rng.shuffle(candidates)
+    return candidates
+
+
+def route_governed(columns, key, fp_rate, fn_rate, rng):
     """Governed catalog returns classifier CANDIDATES, not ground truth.
 
     True Gov-ID columns plus decoys the classifier flagged in error. The model must still
     discriminate, so precision here is earned rather than assumed."""
-    gov = sorted(key)
-    decoys = sorted(c["fqname"] for c in columns
-                    if not c["is_gov_id"] and c["fqname"].split(".", 1)[1] in DECOY_COLUMNS)
-    n_fp = min(int(round(len(gov) * fp_rate)), len(decoys))
-    candidates = gov + rng.sample(decoys, n_fp)
-    rng.shuffle(candidates)
+    candidates = governed_candidates(columns, key, fp_rate, fn_rate, rng)
     return call_model(f"A governed metadata catalog classifier flagged these {len(candidates)} columns "
                       f"as possibly Government-ID related (the classifier is imperfect — some are "
                       f"false positives):\n" + "\n".join(candidates) + f"\n\n{TASK}")
@@ -251,9 +267,10 @@ def write_report(path, model, args, rows):
     with open(path, "w") as fh:
         json.dump({"model": model, "seed": args.seed, "replicates": args.replicates,
                    "classifier_fp_rate": args.classifier_fp_rate,
+                   "classifier_fn_rate": args.classifier_fn_rate,
                    "data_is_synthetic": True, "calls_are_real": True,
                    "governed_route_sees_answer_key": False,
-                   "classifier_recall_assumed_perfect": True,
+                   "classifier_recall_assumed_perfect": args.classifier_fn_rate == 0,
                    "token_param_used": _TOKEN_PARAM,   # which max-token name the endpoint accepted
                    "call_timeout_s": _TIMEOUT,
                    "results": rows, "aggregate": aggregate(rows)}, fh, indent=2)
@@ -270,12 +287,20 @@ def main():
     ap.add_argument("--classifier-fp-rate", type=float, default=1.0,
                     help="decoys the governed classifier flags per true positive (default 1.0). "
                          "0.0 hands the governed route the answer key — not a real benchmark.")
+    ap.add_argument("--classifier-fn-rate", type=float, default=0.0,
+                    help="fraction of true Government-ID columns omitted by the synthetic classifier "
+                         "(default 0.0). This is a sensitivity control, not a calibrated classifier.")
     ap.add_argument("--timeout", type=int, default=None,
                     help="per-call HTTP timeout in seconds (default 120, or OPENAI_TIMEOUT). "
                          "Raise it for slower local/self-hosted models — a large context-stuffing "
                          "prompt on e.g. a local Ollama model can exceed 120s.")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
+
+    if args.classifier_fp_rate < 0:
+        die("--classifier-fp-rate must be non-negative")
+    if not 0 <= args.classifier_fn_rate <= 1:
+        die("--classifier-fn-rate must be between 0 and 1")
 
     global _TIMEOUT
     if args.timeout is not None:
@@ -290,7 +315,7 @@ def main():
     print(f"{C['HD']}Token-Bleed Benchmark — model={model}{C['R']}")
     print(f"{C['DIM']}Data synthetic (Faker, seeds {args.seed}..{args.seed + args.replicates - 1}); "
           f"model calls + tokens + F1 are REAL. Governed route sees classifier candidates "
-          f"(fp-rate {args.classifier_fp_rate}), not the answer key.{C['R']}\n")
+          f"(fp-rate {args.classifier_fp_rate}, fn-rate {args.classifier_fn_rate}), not the answer key.{C['R']}\n")
 
     rows = []
     for n in args.tiers:
@@ -303,12 +328,13 @@ def main():
             tag = f"  {C['DIM']}[seed {seed}] {len(columns)} cols, {len(key)} true Gov-ID{C['R']}"
             print(tag)
             for name, fn in ROUTES:
-                r = fn(columns, key, args.classifier_fp_rate, rng)
+                r = fn(columns, key, args.classifier_fp_rate, args.classifier_fn_rate, rng)
                 sc = score(parse_answer(r["content"], all_fq), key)
                 col = C['OK'] if name.startswith("governed") else C['WARN']
                 print(f"    {col}{name:<32}{C['R']} tokens={r['total_tokens']:>7,}  F1={sc['f1']:.3f}  "
                       f"{C['DIM']}(P={sc['precision']} R={sc['recall']}){C['R']}")
                 rows.append({"tier": n, "seed": seed, "route": name,
+                             "catalog_columns": len(columns), "answer_key_count": len(key),
                              **{k: r[k] for k in ("prompt_tokens", "completion_tokens",
                                                   "reasoning_tokens", "total_tokens", "latency_s")},
                              **sc})
