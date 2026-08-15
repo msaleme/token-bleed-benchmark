@@ -34,7 +34,14 @@ def _r2_provenance_error(report: dict) -> str | None:
         return "report lacks R2 endpoint provenance"
     missing = [field for field in ("endpoint_class", "model_digest", "runtime_version", "hardware")
                if not provenance.get(field)]
-    return f"report lacks R2 provenance fields: {', '.join(missing)}" if missing else None
+    if missing:
+        return f"report lacks R2 provenance fields: {', '.join(missing)}"
+    execution = report.get("r2_execution")
+    if not isinstance(execution, dict) or execution.get("completion_cap_enforced") is not True:
+        return "report lacks a verified enforced completion cap"
+    if execution.get("completion_cap_parameter") != "max_tokens":
+        return "report lacks the enforced completion-cap parameter"
+    return None
 
 
 def _r2_row_error(row: dict, route: str) -> str | None:
@@ -51,6 +58,13 @@ def _r2_row_error(row: dict, route: str) -> str | None:
         return f"{route} route exceeds its retained context budget"
     if not isinstance(row.get("route_preparation_ms"), (int, float)) or row["route_preparation_ms"] < 0:
         return f"{route} route lacks measured route-preparation time"
+    if row.get("completion_cap_enforced") is not True or row.get("completion_cap_parameter") != "max_tokens":
+        return f"{route} route lacks verified completion-cap enforcement"
+    if row.get("token_parameter") != "max_tokens":
+        return f"{route} route lacks the actual enforced completion-cap parameter"
+    completion_tokens = row.get("completion_tokens")
+    if not isinstance(completion_tokens, int) or completion_tokens < 0 or completion_tokens > row["requested_completion_tokens"]:
+        return f"{route} route exceeds or lacks its retained completion cap"
     return None
 
 

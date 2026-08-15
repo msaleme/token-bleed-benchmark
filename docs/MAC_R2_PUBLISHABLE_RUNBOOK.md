@@ -90,7 +90,8 @@ independent discoveries.
 
 ### 1. Freeze source and environment
 
-After the R2 implementation PR merges:
+After the R2 implementation PR merges, use the versioned `experiments/token-bleed-mac-r2-1.yaml`
+contract. The original R2 calibration is retained for audit and must not be extended.
 
 ```bash
 cd <token-bleed-benchmark>
@@ -127,6 +128,10 @@ rule of thumb, decides whether the actual constructed prompts fit.
 For local Ollama, advertised model capacity is not proof of the serving context. R2 sends
 `options.num_ctx` on every call, makes a one-token non-benchmark configuration probe, and requires
 Ollama's live `/api/ps` record to confirm the requested context before calibration begins.
+
+R2.1 also sends Ollama's supported `max_tokens` field, then runs a separate long-output,
+small-cap probe. It must retain a positive provider-reported completion count at or below the cap.
+If that probe fails, it is an endpoint commissioning failure, not a benchmark result.
 
 ### 3. Run the preflight and calibration gate
 
@@ -168,6 +173,8 @@ complete calibration report. Continue only if all of the following are true:
 - No compared row is truncated.
 - Every row includes structured attempts and nonempty retained response/audit fields.
 - Provider-reported model ID matches the R2 contract.
+- The retained completion-cap probe and every row report `completion_cap_enforced: true` with
+  `completion_cap_parameter: max_tokens`.
 - The calibration does not change tiers, timeout, model, statistics, or acceptance thresholds.
 
 If calibration fails, stop. Preserve it and open a remediation issue. Do not tune the contract from

@@ -79,6 +79,9 @@ front of them. The script probes both `max_completion_tokens` and `max_tokens` s
 across providers that disagree about the parameter name, retries 429/5xx with backoff, and
 writes `--out` incrementally so a late rate-limit doesn't discard completed tiers.
 
+For the publishable R2 Mac protocol, use the versioned R2.1 contract and runbook. It verifies
+both the live Ollama context and actual completion-cap enforcement before it collects any trial.
+
 ### Flags that matter
 
 | Flag | Default | Why |
