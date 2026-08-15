@@ -37,9 +37,11 @@ The governed route is NOT given the answer key
   it can and does lose precision. If the governed route were handed only the true
   positives it would be transcribing an answer key, not retrieving.
 
-  Stated assumption: classifier RECALL is modeled as perfect (every true Gov-ID column
-  reaches the candidate set). That makes this a floor on the governed route's difficulty,
-  and it is the assumption most favorable to the governed route. Say so when you cite it.
+  Stated assumption: classifier RECALL is perfect BY DEFAULT (every true Gov-ID column
+  reaches the candidate set) and stops being so the moment you pass
+  `--classifier-fn-rate`. The default is a floor on the governed route's difficulty and
+  is the assumption most favorable to it, so run a nonzero false-negative case before
+  making an accuracy claim, and say which setting produced the number you cite.
 
 Quick start
 -----------
@@ -48,7 +50,7 @@ Quick start
   export OPENAI_BASE_URL="https://api.openai.com/v1"   # or your gateway / Azure / Gemini-compat endpoint
   export OPENAI_API_KEY="sk-..."
   export OPENAI_MODEL="gpt-4o-mini"
-  python3 token_bleed_benchmark.py --tiers 300 1500 3000 --replicates 3 --out report.json
+  python3 token_bleed_benchmark.py --tiers 300 1500 3000 --replicates 20 --out report.json --retain-responses
 
 The endpoint must accept an OpenAI-style POST {base_url}/chat/completions and return a
 `usage` block. Works with OpenAI, Azure OpenAI (v1 path), and gateways that proxy them.
