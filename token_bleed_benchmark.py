@@ -8,7 +8,8 @@ August 2026, sponsored by Informatica, a Salesforce company). That study held th
 constant and compared how an AI agent REACHES enterprise data:
 
   * ungoverned "context stuffing" — dump the raw schema into the prompt
-  * governed metadata layer       — pre-classified catalog returns only candidates
+  * cheap lexical prefilter       — name-only regex returns candidates
+  * governed metadata layer       — pre-classified catalog returns candidates
 
 Their finding: governed access won on BOTH cost (up to ~89x fewer tokens at scale) and
 accuracy (F1 1.000 vs 0.29-0.66 ungoverned). See the article for their full methodology.
@@ -19,9 +20,9 @@ generate YOUR OWN numbers, so you don't have to take anyone's word for it.
 What's real vs. synthetic
 --------------------------
   * The DATA is synthetic — generated with the open-source Faker library, modeled on a
-    financial-services catalog, with Government-ID columns planted among decoys. This is
-    disclosed and matches the article's approach. The answer key is FROZEN by seed before
-    any model sees the data — no tuning, no leakage.
+    financial-services catalog, with fixed per-tier quotas of Government-ID columns and
+    decoys. The answer key is FROZEN by seed before any model sees the data — no tuning,
+    no leakage.
   * The MODEL CALLS, TOKEN COUNTS, and F1 SCORES are REAL. Your numbers will differ from
     the article's (different model, endpoint, and route implementation) — that is the
     point. Cite the article for their figures; cite your run for yours.
@@ -52,7 +53,7 @@ Quick start
 The endpoint must accept an OpenAI-style POST {base_url}/chat/completions and return a
 `usage` block. Works with OpenAI, Azure OpenAI (v1 path), and gateways that proxy them.
 """
-import argparse, json, os, re, sys, time, urllib.request, urllib.error, random
+import argparse, datetime, hashlib, importlib.metadata, json, os, random, re, subprocess, sys, time, urllib.error, urllib.request
 
 GOV_ID_COLUMNS = ["SSN", "SUBJECT_SSN", "ID_DOC_NUMBER", "NATIONAL_ID", "PASSPORT_NO", "SSN_LAST4"]
 DECOY_COLUMNS  = ["TAX_ID", "LICENSE_NO", "DOC_TYPE", "ACCOUNT_NO", "ROUTING_NO", "CUSTOMER_REF"]
@@ -86,7 +87,7 @@ def die(msg, code=2):
     print(f"{C['BAD']}ERROR:{C['R']} {msg}", file=sys.stderr); sys.exit(code)
 
 
-def build_catalog(n_objects, seed):
+def build_catalog(n_objects, seed, gov_id_rate=0.02, decoy_rate=0.08):
     """Synthetic financial-services metadata catalog. Returns (columns, frozen_answer_key).
 
     Columns are deduplicated: the raw generator can emit the same TABLE.COLUMN twice
@@ -97,25 +98,38 @@ def build_catalog(n_objects, seed):
     except ImportError:
         die("faker not installed. Run: pip install -r requirements.txt")
     fake = Faker(); Faker.seed(seed); rng = random.Random(seed)
-    seen, columns, answer_key = set(), [], set()
+    columns, answer_key = [], set()
     n_tables = max(5, n_objects // 20)
+    # Fixed quotas make every replicate within a tier equally class-imbalanced.
+    # The old Bernoulli draw could produce very different positive counts per seed,
+    # especially at the 300-object tier, making F1 comparisons needlessly noisy.
+    n_gov = max(1, round(n_objects * gov_id_rate))
+    n_decoy = min(round(n_objects * decoy_rate), n_objects - n_gov)
+    labels = ([True] * n_gov) + ([False] * (n_objects - n_gov))
+    rng.shuffle(labels)
+    object_index = 0
     for t in range(n_tables):
         table = f"{fake.word().upper()}_{fake.word().upper()}_{t}"
         for _ in range(max(3, n_objects // n_tables)):
-            roll = rng.random()
-            if roll < 0.02:
-                col, is_gov = rng.choice(GOV_ID_COLUMNS), True
-            elif roll < 0.10:
-                col, is_gov = rng.choice(DECOY_COLUMNS), False
+            if object_index >= n_objects:
+                break
+            is_gov = labels[object_index]
+            if is_gov:
+                col = rng.choice(GOV_ID_COLUMNS)
+            elif n_decoy > 0:
+                # Assign a fixed number of lexical look-alikes, independent of seed.
+                # Removing one each time avoids another Bernoulli source of variance.
+                col = rng.choice(DECOY_COLUMNS) if n_decoy else f"{fake.word().upper()}_{fake.word().upper()}"
+                n_decoy -= 1
             else:
-                col, is_gov = f"{fake.word().upper()}_{fake.word().upper()}", False
-            fq = f"{table}.{col}"
-            if fq in seen:
-                continue
-            seen.add(fq)
+                col, is_gov = rng.choice(DECOY_COLUMNS), False
+                # Non-look-alike background fields deliberately cannot match the lexical baseline.
+                col = f"{fake.word().upper()}_{fake.word().upper()}_{object_index}"
+            fq = f"{table}.{col}_{object_index}" if col in GOV_ID_COLUMNS + DECOY_COLUMNS else f"{table}.{col}"
             columns.append({"fqname": fq, "is_gov_id": is_gov})
             if is_gov:
                 answer_key.add(fq)
+            object_index += 1
     return columns, answer_key
 
 
@@ -153,6 +167,7 @@ def call_model(prompt, max_tokens=3000, retries=4):
                 u = j.get("usage", {}) or {}
                 det = u.get("completion_tokens_details", {}) or {}
                 return {"content": (j.get("choices") or [{}])[0].get("message", {}).get("content", "") or "",
+                        "returned_model": j.get("model") or model,
                         "prompt_tokens": u.get("prompt_tokens", 0) or 0,
                         "completion_tokens": u.get("completion_tokens", 0) or 0,
                         "reasoning_tokens": det.get("reasoning_tokens", 0) or 0,
@@ -204,9 +219,32 @@ def score(found, key):
     return dict(tp=tp, fp=fp, fn=fn, precision=round(prec, 3), recall=round(rec, 3), f1=round(f1, 3))
 
 
+def _call_route(prompt):
+    result = call_model(prompt)
+    result["prompt_sha256"] = hashlib.sha256(prompt.encode()).hexdigest()
+    return result
+
+
 def route_ungoverned(columns, _key, _fp_rate, _fn_rate, _rng):
     catalog = "\n".join(c["fqname"] for c in columns)
-    return call_model(f"Here is the full data catalog ({len(columns)} columns):\n{catalog}\n\n{TASK}")
+    return _call_route(f"Here is the full data catalog ({len(columns)} columns):\n{catalog}\n\n{TASK}")
+
+
+# A deliberately cheap non-governance baseline: name-only matching. It has no
+# classifier, embeddings, lineage, or semantic metadata. It can win if labels
+# alone explain the observed benefit.
+LEXICAL_GOV_ID = re.compile(r"(?:^|_)(?:SSN|NATIONAL_ID|PASSPORT)(?:_|$)")
+
+
+def lexical_candidates(columns):
+    return [c["fqname"] for c in columns
+            if LEXICAL_GOV_ID.search(c["fqname"].split(".", 1)[1])]
+
+
+def route_lexical(columns, _key, _fp_rate, _fn_rate, _rng):
+    candidates = lexical_candidates(columns)
+    return _call_route(f"A cheap name-only lexical prefilter selected these {len(candidates)} columns "
+                       f"as potentially Government-ID related:\n" + "\n".join(candidates) + f"\n\n{TASK}")
 
 
 def governed_candidates(columns, key, fp_rate, fn_rate, rng):
@@ -221,8 +259,10 @@ def governed_candidates(columns, key, fp_rate, fn_rate, rng):
     n_fn = min(int(round(len(gov) * fn_rate)), len(gov))
     omitted = set(rng.sample(gov, n_fn)) if n_fn else set()
     visible_gov = [fq for fq in gov if fq not in omitted]
-    decoys = sorted(c["fqname"] for c in columns
-                    if not c["is_gov_id"] and c["fqname"].split(".", 1)[1] in DECOY_COLUMNS)
+    def is_decoy(fqname):
+        field = fqname.split(".", 1)[1]
+        return field in DECOY_COLUMNS or any(field.startswith(f"{name}_") for name in DECOY_COLUMNS)
+    decoys = sorted(c["fqname"] for c in columns if not c["is_gov_id"] and is_decoy(c["fqname"]))
     n_fp = min(int(round(len(gov) * fp_rate)), len(decoys))
     candidates = visible_gov + rng.sample(decoys, n_fp)
     rng.shuffle(candidates)
@@ -235,17 +275,25 @@ def route_governed(columns, key, fp_rate, fn_rate, rng):
     True Gov-ID columns plus decoys the classifier flagged in error. The model must still
     discriminate, so precision here is earned rather than assumed."""
     candidates = governed_candidates(columns, key, fp_rate, fn_rate, rng)
-    return call_model(f"A governed metadata catalog classifier flagged these {len(candidates)} columns "
+    return _call_route(f"A governed metadata catalog classifier flagged these {len(candidates)} columns "
                       f"as possibly Government-ID related (the classifier is imperfect — some are "
                       f"false positives):\n" + "\n".join(candidates) + f"\n\n{TASK}")
 
 
 ROUTES = [("ungoverned (context-stuffing)", route_ungoverned),
+          ("lexical prefilter (cheap baseline)", route_lexical),
           ("governed (metadata layer)", route_governed)]
 
 
+def randomized_routes(seed):
+    """Return a deterministic but seed-randomized execution order for one replicate."""
+    ordered = ROUTES[:]
+    random.Random(seed + 200_000).shuffle(ordered)
+    return ordered
+
+
 def aggregate(rows):
-    """Collapse replicate rows into mean + min/max per (tier, route)."""
+    """Collapse replicate rows into distributions and normal-approximation 95% CIs."""
     out = {}
     for r in rows:
         out.setdefault((r["tier"], r["route"]), []).append(r)
@@ -255,19 +303,46 @@ def aggregate(rows):
         for m in ("prompt_tokens", "completion_tokens", "reasoning_tokens", "total_tokens",
                   "latency_s", "precision", "recall", "f1"):
             vals = [x[m] for x in rs]
-            entry[f"{m}_mean"] = round(sum(vals) / len(vals), 3)
+            mean = sum(vals) / len(vals)
+            variance = sum((v - mean) ** 2 for v in vals) / (len(vals) - 1) if len(vals) > 1 else 0
+            margin = 1.96 * (variance ** 0.5) / (len(vals) ** 0.5) if len(vals) > 1 else 0
+            entry[f"{m}_values"] = vals
+            entry[f"{m}_mean"] = round(mean, 3)
             entry[f"{m}_min"], entry[f"{m}_max"] = round(min(vals), 3), round(max(vals), 3)
+            entry[f"{m}_ci95_low"] = round(mean - margin, 3)
+            entry[f"{m}_ci95_high"] = round(mean + margin, 3)
         agg.append(entry)
     return agg
+
+
+def _git_commit():
+    try:
+        return subprocess.check_output(["git", "rev-parse", "HEAD"], text=True,
+                                       stderr=subprocess.DEVNULL).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+
+def _package_versions():
+    versions = {"python": sys.version.split()[0]}
+    for package in ("Faker",):
+        try:
+            versions[package] = importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:
+            versions[package] = None
+    return versions
 
 
 def write_report(path, model, args, rows):
     if not path:
         return
     with open(path, "w") as fh:
-        json.dump({"model": model, "seed": args.seed, "replicates": args.replicates,
+        json.dump({"schema_version": "1.0", "requested_model": model, "seed": args.seed,
+                   "replicates": args.replicates,
                    "classifier_fp_rate": args.classifier_fp_rate,
                    "classifier_fn_rate": args.classifier_fn_rate,
+                   "git_commit": _git_commit(), "package_versions": _package_versions(),
+                   "created_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                    "data_is_synthetic": True, "calls_are_real": True,
                    "governed_route_sees_answer_key": False,
                    "classifier_recall_assumed_perfect": args.classifier_fn_rate == 0,
@@ -294,6 +369,9 @@ def main():
                     help="per-call HTTP timeout in seconds (default 120, or OPENAI_TIMEOUT). "
                          "Raise it for slower local/self-hosted models — a large context-stuffing "
                          "prompt on e.g. a local Ollama model can exceed 120s.")
+    ap.add_argument("--retain-responses", action="store_true",
+                    help="store raw model responses in the report for a full scorer audit. "
+                         "Without this, reports retain response hashes, parsed answers, and answer keys.")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
@@ -313,7 +391,7 @@ def main():
 
     model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
     print(f"{C['HD']}Token-Bleed Benchmark — model={model}{C['R']}")
-    print(f"{C['DIM']}Data synthetic (Faker, seeds {args.seed}..{args.seed + args.replicates - 1}); "
+    print(f"{C['DIM']}Data synthetic (Faker, fixed class quotas, seeds {args.seed}..{args.seed + args.replicates - 1}); "
           f"model calls + tokens + F1 are REAL. Governed route sees classifier candidates "
           f"(fp-rate {args.classifier_fp_rate}, fn-rate {args.classifier_fn_rate}), not the answer key.{C['R']}\n")
 
@@ -324,25 +402,37 @@ def main():
             seed = args.seed + rep
             columns, key = build_catalog(n, seed)
             all_fq = [c["fqname"] for c in columns]
-            rng = random.Random(seed + 100_000)
             tag = f"  {C['DIM']}[seed {seed}] {len(columns)} cols, {len(key)} true Gov-ID{C['R']}"
             print(tag)
-            for name, fn in ROUTES:
-                r = fn(columns, key, args.classifier_fp_rate, args.classifier_fn_rate, rng)
-                sc = score(parse_answer(r["content"], all_fq), key)
+            ordered_routes = randomized_routes(seed)
+            route_order = [name for name, _ in ordered_routes]
+            for position, (name, fn) in enumerate(ordered_routes, start=1):
+                # Candidate sampling is route-specific so execution order cannot perturb it.
+                route_rng = random.Random(f"{seed}:{name}:candidate-set")
+                r = fn(columns, key, args.classifier_fp_rate, args.classifier_fn_rate, route_rng)
+                parsed = parse_answer(r["content"], all_fq)
+                sc = score(parsed, key)
                 col = C['OK'] if name.startswith("governed") else C['WARN']
-                print(f"    {col}{name:<32}{C['R']} tokens={r['total_tokens']:>7,}  F1={sc['f1']:.3f}  "
+                print(f"    {col}{name:<32}{C['R']} prompt={r['prompt_tokens']:>7,} total={r['total_tokens']:>7,}  F1={sc['f1']:.3f}  "
                       f"{C['DIM']}(P={sc['precision']} R={sc['recall']}){C['R']}")
                 rows.append({"tier": n, "seed": seed, "route": name,
                              "catalog_columns": len(columns), "answer_key_count": len(key),
+                             "route_position": position, "route_order": route_order,
+                             "requested_model": model, "returned_model": r["returned_model"],
+                             "prompt_sha256": r["prompt_sha256"],
+                             "response_sha256": hashlib.sha256(r["content"].encode()).hexdigest(),
+                             "scorer_audit": {"parsed_answers": sorted(parsed),
+                                              "answer_key": sorted(key)},
                              **{k: r[k] for k in ("prompt_tokens", "completion_tokens",
                                                   "reasoning_tokens", "total_tokens", "latency_s")},
                              **sc})
+                if args.retain_responses:
+                    rows[-1]["model_response"] = r["content"]
                 write_report(args.out, model, args, rows)   # incremental: a 429 later keeps this
         agg = {a["route"]: a for a in aggregate([r for r in rows if r["tier"] == n])}
         ug, gv = agg["ungoverned (context-stuffing)"], agg["governed (metadata layer)"]
-        mult = (ug["total_tokens_mean"] / gv["total_tokens_mean"]) if gv["total_tokens_mean"] else 0
-        print(f"  {C['HD']}--> governed used {mult:.1f}x fewer tokens (mean of {ug['replicates']}), "
+        mult = (ug["prompt_tokens_mean"] / gv["prompt_tokens_mean"]) if gv["prompt_tokens_mean"] else 0
+        print(f"  {C['HD']}--> governed used {mult:.1f}x fewer prompt tokens (mean of {ug['replicates']}), "
               f"F1 {gv['f1_mean']:.3f} [{gv['f1_min']:.3f}-{gv['f1_max']:.3f}] vs "
               f"{ug['f1_mean']:.3f} [{ug['f1_min']:.3f}-{ug['f1_max']:.3f}]{C['R']}\n")
 
