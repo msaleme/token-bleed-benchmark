@@ -94,6 +94,22 @@ _REQUEST_OPTIONS = None
 # default). Env is read at import so it applies even if main() isn't the entry point.
 _TIMEOUT = int(os.environ.get("OPENAI_TIMEOUT", "120"))
 
+# This is the schema boundary between live route results and persisted report rows.  Keep every
+# field the R2 adapter uses here, including the actual request parameter, not only its probe.
+ROUTE_RESULT_FIELDS = (
+    "prompt_tokens", "completion_tokens", "reasoning_tokens", "total_tokens", "latency_s",
+    "route_preparation_ms", "constructed_input_token_count", "context_window_tokens",
+    "requested_completion_tokens", "prompt_truncated_by_context", "token_parameter",
+    "completion_cap_enforced", "completion_cap_parameter",
+)
+
+
+def persisted_route_fields(result):
+    """Select the complete route-result schema retained in every report row."""
+    # Failed calls retain nulls rather than crashing report generation; the R2 adapter rejects
+    # those rows fail-closed when a required provenance field is absent.
+    return {field: result.get(field) for field in ROUTE_RESULT_FIELDS}
+
 
 def die(msg, code=2):
     print(f"{C['BAD']}ERROR:{C['R']} {msg}", file=sys.stderr); sys.exit(code)
@@ -651,11 +667,7 @@ def main():
                              "error_message": r.get("error_message"),
                              "scorer_audit": {"parsed_answers": sorted(parsed),
                                               "answer_key": sorted(key)},
-                             **{k: r[k] for k in ("prompt_tokens", "completion_tokens",
-                                                  "reasoning_tokens", "total_tokens", "latency_s",
-                                                  "route_preparation_ms", "constructed_input_token_count",
-                                                  "context_window_tokens", "requested_completion_tokens",
-                                                  "prompt_truncated_by_context")},
+                             **persisted_route_fields(r),
                              "token_count_method": r["token_count_method"],
                              **sc})
                 if args.retain_responses:

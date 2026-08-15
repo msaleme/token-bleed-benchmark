@@ -167,6 +167,20 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(captured[0]["max_tokens"], 8)
         self.assertNotIn("max_completion_tokens", captured[0])
 
+    def test_r2_persisted_row_retains_completion_cap_provenance(self):
+        result = {
+            "prompt_tokens": 10, "completion_tokens": 2, "reasoning_tokens": 0,
+            "total_tokens": 12, "latency_s": 1.0, "route_preparation_ms": 0.1,
+            "constructed_input_token_count": 20, "context_window_tokens": 100,
+            "requested_completion_tokens": 8, "prompt_truncated_by_context": False,
+            "token_parameter": "max_tokens", "completion_cap_enforced": True,
+            "completion_cap_parameter": "max_tokens",
+        }
+        persisted = benchmark.persisted_route_fields(result)
+        self.assertEqual(persisted["token_parameter"], "max_tokens")
+        self.assertTrue(persisted["completion_cap_enforced"])
+        self.assertEqual(persisted["completion_cap_parameter"], "max_tokens")
+
 
 class ParsingTests(unittest.TestCase):
     def test_negated_column_is_not_scored_as_an_answer(self):
