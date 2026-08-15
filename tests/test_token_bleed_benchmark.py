@@ -2,6 +2,7 @@ import json
 import random
 import tempfile
 import unittest
+from unittest import mock
 from argparse import Namespace
 from pathlib import Path
 
@@ -113,6 +114,22 @@ class ReportTests(unittest.TestCase):
         self.assertFalse(result["success"])
         self.assertEqual(result["attempts"][0]["outcome"], "context_preflight_refused")
         self.assertIsNone(result["prompt_truncated_by_context"])
+
+    def test_r2_ollama_context_probe_requires_live_context_at_budget(self):
+        response = mock.MagicMock()
+        response.read.return_value = json.dumps({"models": [{
+            "name": "test-model", "context_length": 65536,
+        }]}).encode()
+        response.__enter__.return_value = response
+        with mock.patch.dict("os.environ", {"OPENAI_MODEL": "test-model"}, clear=False), \
+             mock.patch.object(benchmark, "call_model", return_value={
+                 "success": True, "returned_model": "test-model"
+             }), \
+             mock.patch.object(benchmark.urllib.request, "urlopen", return_value=response):
+            benchmark._REQUEST_OPTIONS = {"num_ctx": 65536}
+            observed = benchmark.verify_ollama_runtime_context(65536)
+        self.assertEqual(observed["observed_context_length"], 65536)
+        self.assertEqual(observed["requested_num_ctx"], 65536)
 
 
 class ParsingTests(unittest.TestCase):
