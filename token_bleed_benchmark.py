@@ -362,10 +362,15 @@ ROUTES = [("ungoverned (context-stuffing)", route_ungoverned),
           ("governed (metadata layer)", route_governed)]
 
 
-def randomized_routes(seed):
-    """Return a deterministic but seed-randomized execution order for one replicate."""
+def randomized_routes(seed, classifier_fn_rate=0.0):
+    """Return a deterministic route order for a seed and R3 recall condition.
+
+    R3 evaluates the same catalog under three independently randomized classifier-recall
+    conditions.  Binding the condition into the ordering prevents one route position from
+    being systematically associated with a sensitivity condition.
+    """
     ordered = ROUTES[:]
-    random.Random(seed + 200_000).shuffle(ordered)
+    random.Random(f"{seed}:route-order:{classifier_fn_rate:.6f}").shuffle(ordered)
     return ordered
 
 
@@ -396,6 +401,7 @@ def preflight_context(tiers, seed, classifier_fp_rate, classifier_fn_rate, conte
                           f"false positives):\n" + "\n".join(candidates) + f"\n\n{TASK}")
             upper_bound = len(prompt.encode("utf-8"))
             rows.append({"tier": tier, "seed": seed, "route": name,
+                         "classifier_fn_rate": classifier_fn_rate,
                          "constructed_input_token_count": upper_bound,
                          "token_count_method": "utf8_byte_upper_bound",
                          "context_window_tokens": context_window_tokens,
@@ -465,10 +471,11 @@ def aggregate(rows):
     """Collapse replicate rows into distributions and normal-approximation 95% CIs."""
     out = {}
     for r in rows:
-        out.setdefault((r["tier"], r["route"]), []).append(r)
+        out.setdefault((r["tier"], r["route"], r.get("classifier_fn_rate", 0.0)), []).append(r)
     agg = []
-    for (tier, route), rs in out.items():
-        entry = {"tier": tier, "route": route, "replicates": len(rs)}
+    for (tier, route, classifier_fn_rate), rs in out.items():
+        entry = {"tier": tier, "route": route, "classifier_fn_rate": classifier_fn_rate,
+                 "replicates": len(rs)}
         for m in ("prompt_tokens", "completion_tokens", "reasoning_tokens", "total_tokens",
                   "latency_s", "precision", "recall", "f1"):
             vals = [x[m] for x in rs]
@@ -510,6 +517,7 @@ def write_report(path, model, args, rows):
                    "replicates": args.replicates,
                    "classifier_fp_rate": args.classifier_fp_rate,
                    "classifier_fn_rate": args.classifier_fn_rate,
+                   "classifier_fn_rates": getattr(args, "classifier_fn_rates", None) or [args.classifier_fn_rate],
                    "git_commit": _git_commit(), "package_versions": _package_versions(),
                    "created_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                    "data_is_synthetic": True, "calls_are_real": True,
@@ -545,7 +553,10 @@ def main():
                          "0.0 hands the governed route the answer key — not a real benchmark.")
     ap.add_argument("--classifier-fn-rate", type=float, default=0.0,
                     help="fraction of true Government-ID columns omitted by the synthetic classifier "
-                         "(default 0.0). This is a sensitivity control, not a calibrated classifier.")
+                        "(default 0.0). This is a sensitivity control, not a calibrated classifier.")
+    ap.add_argument("--classifier-fn-rates", type=float, nargs="+",
+                    help="R3 only: run each declared classifier false-negative sensitivity condition "
+                         "in one retained report, for example: 0 0.05 0.10.")
     ap.add_argument("--timeout", type=int, default=None,
                     help="per-call HTTP timeout in seconds (default 120, or OPENAI_TIMEOUT). "
                          "Raise it for slower local/self-hosted models — a large context-stuffing "
@@ -556,6 +567,8 @@ def main():
     ap.add_argument("--out", default=None)
     ap.add_argument("--r2", action="store_true",
                     help="enable the R2 fail-closed evidence schema and context preflight")
+    ap.add_argument("--r3", action="store_true",
+                    help="enable R3 multi-condition retained evidence; requires --r2 and --classifier-fn-rates 0 0.05 0.10")
     ap.add_argument("--context-window-tokens", type=int,
                     help="declared runtime context budget; required with --r2")
     ap.add_argument("--max-completion-tokens", type=int, default=3000,
@@ -578,6 +591,15 @@ def main():
         die("--classifier-fp-rate must be non-negative")
     if not 0 <= args.classifier_fn_rate <= 1:
         die("--classifier-fn-rate must be between 0 and 1")
+    fn_rates = args.classifier_fn_rates or [args.classifier_fn_rate]
+    if any(not 0 <= rate <= 1 for rate in fn_rates):
+        die("every --classifier-fn-rates value must be between 0 and 1")
+    if len(set(fn_rates)) != len(fn_rates):
+        die("--classifier-fn-rates must not repeat a condition")
+    if args.r3 and not args.r2:
+        die("--r3 requires --r2")
+    if args.r3 and fn_rates != [0.0, 0.05, 0.1]:
+        die("--r3 requires the frozen --classifier-fn-rates 0 0.05 0.10")
     if args.r2 and (not args.context_window_tokens or args.context_window_tokens <= 0):
         die("--r2 requires a positive --context-window-tokens")
     if args.r2 and not all((args.endpoint_class, args.model_digest, args.runtime_version, args.hardware)):
@@ -607,9 +629,15 @@ def main():
               f"{C['R']}\n", file=sys.stderr)
 
     if args.r2:
-        preflight = preflight_context(args.tiers, args.seed, args.classifier_fp_rate,
-                                      args.classifier_fn_rate, args.context_window_tokens,
-                                      args.max_completion_tokens)
+        preflight_rows = [preflight_context(args.tiers, args.seed, args.classifier_fp_rate,
+                                            fn_rate, args.context_window_tokens,
+                                            args.max_completion_tokens)
+                          for fn_rate in fn_rates]
+        preflight = {"schema_version": "1.0", "artifact_type": "token-bleed-context-preflight",
+                     "classifier_fn_rates": fn_rates,
+                     "rows": [row for result in preflight_rows for row in result["rows"]],
+                     "failures": [row for result in preflight_rows for row in result["failures"]]}
+        preflight["passed"] = not preflight["failures"]
         if not preflight["passed"]:
             if args.preflight_out:
                 with open(args.preflight_out, "w") as fh:
@@ -633,7 +661,7 @@ def main():
     print(f"{C['HD']}Token-Bleed Benchmark — model={model}{C['R']}")
     print(f"{C['DIM']}Data synthetic (Faker, fixed class quotas, seeds {args.seed}..{args.seed + args.replicates - 1}); "
           f"model calls + tokens + F1 are REAL. Governed route sees classifier candidates "
-          f"(fp-rate {args.classifier_fp_rate}, fn-rate {args.classifier_fn_rate}), not the answer key.{C['R']}\n")
+          f"(fp-rate {args.classifier_fp_rate}, fn-rates {fn_rates}), not the answer key.{C['R']}\n")
 
     rows = []
     for n in args.tiers:
@@ -642,22 +670,25 @@ def main():
             seed = args.seed + rep
             columns, key = build_catalog(n, seed)
             all_fq = [c["fqname"] for c in columns]
-            tag = f"  {C['DIM']}[seed {seed}] {len(columns)} cols, {len(key)} true Gov-ID{C['R']}"
-            print(tag)
-            ordered_routes = randomized_routes(seed)
-            route_order = [name for name, _ in ordered_routes]
-            for position, (name, fn) in enumerate(ordered_routes, start=1):
+            for fn_rate in fn_rates:
+                tag = (f"  {C['DIM']}[seed {seed}, classifier-fn {fn_rate:g}] {len(columns)} cols, "
+                       f"{len(key)} true Gov-ID{C['R']}")
+                print(tag)
+                ordered_routes = randomized_routes(seed, fn_rate)
+                route_order = [name for name, _ in ordered_routes]
+                for position, (name, fn) in enumerate(ordered_routes, start=1):
                 # Candidate sampling is route-specific so execution order cannot perturb it.
-                route_rng = random.Random(f"{seed}:{name}:candidate-set")
-                r = fn(columns, key, args.classifier_fp_rate, args.classifier_fn_rate, route_rng,
+                    route_rng = random.Random(f"{seed}:{name}:{fn_rate:.6f}:candidate-set")
+                    r = fn(columns, key, args.classifier_fp_rate, fn_rate, route_rng,
                        context_window_tokens=args.context_window_tokens if args.r2 else None,
                        max_tokens=args.max_completion_tokens)
-                parsed = parse_answer(r["content"], all_fq) if r["success"] else set()
-                sc = score(parsed, key) if r["success"] else dict(tp=0, fp=0, fn=len(key), precision=0.0, recall=0.0, f1=0.0)
-                col = C['OK'] if name.startswith("governed") else C['WARN']
-                print(f"    {col}{name:<32}{C['R']} prompt={r['prompt_tokens']:>7,} total={r['total_tokens']:>7,}  F1={sc['f1']:.3f}  "
-                      f"{C['DIM']}(P={sc['precision']} R={sc['recall']}){C['R']}")
-                rows.append({"tier": n, "seed": seed, "route": name,
+                    parsed = parse_answer(r["content"], all_fq) if r["success"] else set()
+                    sc = score(parsed, key) if r["success"] else dict(tp=0, fp=0, fn=len(key), precision=0.0, recall=0.0, f1=0.0)
+                    col = C['OK'] if name.startswith("governed") else C['WARN']
+                    print(f"    {col}{name:<32}{C['R']} prompt={r['prompt_tokens']:>7,} total={r['total_tokens']:>7,}  F1={sc['f1']:.3f}  "
+                          f"{C['DIM']}(P={sc['precision']} R={sc['recall']}){C['R']}")
+                    rows.append({"tier": n, "seed": seed, "route": name,
+                             "classifier_fn_rate": fn_rate,
                              "catalog_columns": len(columns), "answer_key_count": len(key),
                              "route_position": position, "route_order": route_order,
                              "requested_model": model, "returned_model": r["returned_model"],
@@ -670,18 +701,20 @@ def main():
                              **persisted_route_fields(r),
                              "token_count_method": r["token_count_method"],
                              **sc})
-                if args.retain_responses:
-                    rows[-1]["model_response"] = r["content"]
-                write_report(args.out, model, args, rows)   # incremental: a 429 later keeps this
-        agg = {a["route"]: a for a in aggregate([r for r in rows if r["tier"] == n and r["success"]])}
-        if set(agg) != {name for name, _ in ROUTES}:
-            print(f"{C['BAD']}  incomplete route results at tier {n}; retained failures prevent a comparative summary{C['R']}")
-            continue
-        ug, gv = agg["ungoverned (context-stuffing)"], agg["governed (metadata layer)"]
-        mult = (ug["prompt_tokens_mean"] / gv["prompt_tokens_mean"]) if gv["prompt_tokens_mean"] else 0
-        print(f"  {C['HD']}--> governed used {mult:.1f}x fewer prompt tokens (mean of {ug['replicates']}), "
-              f"F1 {gv['f1_mean']:.3f} [{gv['f1_min']:.3f}-{gv['f1_max']:.3f}] vs "
-              f"{ug['f1_mean']:.3f} [{ug['f1_min']:.3f}-{ug['f1_max']:.3f}]{C['R']}\n")
+                    if args.retain_responses:
+                        rows[-1]["model_response"] = r["content"]
+                    write_report(args.out, model, args, rows)   # incremental: a 429 later keeps this
+        for fn_rate in fn_rates:
+            agg = {a["route"]: a for a in aggregate([r for r in rows if r["tier"] == n and r["success"]
+                                                       and r.get("classifier_fn_rate") == fn_rate])}
+            if set(agg) != {name for name, _ in ROUTES}:
+                print(f"{C['BAD']}  incomplete route results at tier {n}, classifier-fn {fn_rate:g}; retained failures prevent a comparative summary{C['R']}")
+                continue
+            ug, gv = agg["ungoverned (context-stuffing)"], agg["governed (metadata layer)"]
+            mult = (ug["prompt_tokens_mean"] / gv["prompt_tokens_mean"]) if gv["prompt_tokens_mean"] else 0
+            print(f"  {C['HD']}--> classifier-fn {fn_rate:g}: governed used {mult:.1f}x fewer prompt tokens (mean of {ug['replicates']}), "
+                  f"F1 {gv['f1_mean']:.3f} [{gv['f1_min']:.3f}-{gv['f1_max']:.3f}] vs "
+                  f"{ug['f1_mean']:.3f} [{ug['f1_min']:.3f}-{ug['f1_max']:.3f}]{C['R']}\n")
 
     if args.out:
         print(f"{C['DIM']}Full report -> {args.out}{C['R']}")
