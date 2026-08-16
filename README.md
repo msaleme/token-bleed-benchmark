@@ -82,9 +82,10 @@ writes `--out` incrementally so a late rate-limit doesn't discard completed tier
 For the publishable R2 Mac protocol, use the versioned R2.1 contract and runbook. It verifies
 both the live Ollama context and actual completion-cap enforcement before it collects any trial.
 
-The completed R2.1 result and the preregistered R3 follow-up are documented in
-[`docs/R2_1_RESULTS.md`](docs/R2_1_RESULTS.md) and
-[`docs/R3_PROTOCOL.md`](docs/R3_PROTOCOL.md). R2.1 is a bounded synthetic result on one named
+The completed R2.1 result, preregistered R3 protocol, and completed R3 result are documented in
+[`docs/R2_1_RESULTS.md`](docs/R2_1_RESULTS.md),
+[`docs/R3_PROTOCOL.md`](docs/R3_PROTOCOL.md), and
+[`docs/R3_RESULTS.md`](docs/R3_RESULTS.md). These are bounded synthetic results on one named
 local endpoint, not a replication of the sponsored study or a production ROI claim.
 
 ### Flags that matter

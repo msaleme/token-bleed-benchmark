@@ -1,0 +1,1178 @@
+{
+  "adapter_notes": [
+    "Each tier is a declared ACE split; no tuning is performed by this adapter.",
+    "R1 reports leave unavailable complexity/statistical evidence absent so ACE fails closed.",
+    "R3 claim-scoped verdicts are separate from the generic ACE verdict; each claim is assessed only against its declared comparator and condition."
+  ],
+  "artifact_type": "ace-trial-evidence",
+  "baseline_metrics": {
+    "f1": 0.23028333333333334
+  },
+  "claim_scoped_verdicts": {
+    "governed_quality_vs_full": {
+      "checks": [
+        {
+          "confidence_interval": [
+            0.25439875,
+            0.50580125
+          ],
+          "metric": "paired_f1_difference_ci",
+          "passed": true,
+          "required_lower_bound": -0.02,
+          "tier": 1500
+        },
+        {
+          "confidence_interval": [
+            0.138195,
+            0.4113624999999998
+          ],
+          "metric": "paired_f1_difference_ci",
+          "passed": true,
+          "required_lower_bound": -0.02,
+          "tier": 3000
+        }
+      ],
+      "verdict": "ACCEPTED"
+    },
+    "governed_sensitivity_vs_lexical": {
+      "conditions": {
+        "0.05": {
+          "checks": [
+            {
+              "confidence_interval": [
+                -0.3412525,
+                -0.08255000000000001
+              ],
+              "metric": "paired_f1_difference_ci",
+              "passed": false,
+              "required_lower_bound": 0.0,
+              "tier": 3000
+            },
+            {
+              "actual": 2.056889747192239,
+              "maximum": 1.1,
+              "metric": "mean_prompt_token_ratio",
+              "passed": false,
+              "tier": 3000
+            }
+          ],
+          "verdict": "REJECTED"
+        },
+        "0.1": {
+          "checks": [
+            {
+              "confidence_interval": [
+                -0.3886525,
+                0.00690499999999993
+              ],
+              "metric": "paired_f1_difference_ci",
+              "passed": false,
+              "required_lower_bound": 0.0,
+              "tier": 3000
+            },
+            {
+              "actual": 2.000945670894769,
+              "maximum": 1.1,
+              "metric": "mean_prompt_token_ratio",
+              "passed": false,
+              "tier": 3000
+            }
+          ],
+          "verdict": "REJECTED"
+        }
+      },
+      "verdict": "REJECTED"
+    },
+    "governed_value_vs_lexical": {
+      "checks": [
+        {
+          "confidence_interval": [
+            -0.37135875,
+            5.2499999999958186e-05
+          ],
+          "metric": "paired_f1_difference_ci",
+          "passed": false,
+          "required_lower_bound": 0.0,
+          "tier": 3000
+        },
+        {
+          "actual": 2.1093927366684313,
+          "maximum": 1.1,
+          "metric": "mean_prompt_token_ratio",
+          "passed": false,
+          "tier": 3000
+        }
+      ],
+      "verdict": "REJECTED"
+    },
+    "selective_context_cost_vs_full": {
+      "checks": [
+        {
+          "actual": 0.9417252869137738,
+          "metric": "mean_prompt_token_reduction",
+          "passed": true,
+          "required": 0.5,
+          "tier": 300
+        },
+        {
+          "actual": 0.9600518617989786,
+          "metric": "mean_prompt_token_reduction",
+          "passed": true,
+          "required": 0.5,
+          "tier": 1500
+        },
+        {
+          "actual": 0.9623663045879784,
+          "metric": "mean_prompt_token_reduction",
+          "passed": true,
+          "required": 0.5,
+          "tier": 3000
+        }
+      ],
+      "verdict": "ACCEPTED"
+    }
+  },
+  "config_sha256": "22d426ac1b0e0bced39e3af82d6ac6d7310a51a3581049874f59b01adc9e5354",
+  "experiment_id": "token-bleed-mac-r3",
+  "schema_version": "1.0",
+  "source_revision": "76ef98c11824da62337694ad71f0f08aebc0e63b",
+  "statistical_evidence": {
+    "development": {
+      "ecd_bootstrap": {
+        "confidence_level": 0.95,
+        "interval": [
+          0.940850148545722,
+          0.9426490256525002
+        ],
+        "method": "paired bootstrap percentile confidence interval",
+        "observed_statistic": 0.9417252869137738,
+        "random_seed": 20260815,
+        "resamples": 10000,
+        "statistic": "mean(ecd_improvement)"
+      },
+      "ecd_confidence_interval": [
+        0.940850148545722,
+        0.9426490256525002
+      ],
+      "f1_permutation_test": {
+        "alternative": "two-sided",
+        "method": "exact two-sided paired sign-flip permutation test",
+        "observed_statistic": 0.51895,
+        "p_value": 7.2479248046875e-05,
+        "permutations": 1048576,
+        "random_seed": null,
+        "statistic": "mean(governed_f1 - ungoverned_f1)"
+      },
+      "p_value": 7.2479248046875e-05,
+      "paired_values": {
+        "ecd_improvement": [
+          0.9430250960886276,
+          0.9450106157112527,
+          0.9404710920770878,
+          0.9437954595547718,
+          0.9400352733686067,
+          0.9410042783156947,
+          0.9441984056687334,
+          0.9443954104148279,
+          0.9447693307342431,
+          0.9421978021978022,
+          0.9411764705882353,
+          0.9449385853451927,
+          0.9402659690429475,
+          0.9410042783156947,
+          0.939539978094195,
+          0.9388497385769493,
+          0.9390569395017794,
+          0.9398190045248869,
+          0.9408322496749024,
+          0.9401197604790419
+        ],
+        "governed_minus_ungoverned_f1": [
+          1.0,
+          -0.133,
+          -0.19,
+          0.909,
+          0.8,
+          0.29200000000000004,
+          0.8,
+          0.0,
+          0.667,
+          0.909,
+          0.667,
+          0.642,
+          0.667,
+          0.667,
+          0.273,
+          0.642,
+          -0.10899999999999999,
+          0.909,
+          0.8,
+          0.16700000000000004
+        ]
+      }
+    }
+  },
+  "telemetry_provenance": "measured",
+  "trials": [
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 4.333333333333333,
+        "ecd_improvement": 0.9430250960886276,
+        "f1": 1.0
+      },
+      "seed": 62,
+      "split": "development",
+      "success": true,
+      "trial_id": "tier-300-seed-62"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 6.888888888888889,
+        "ecd_improvement": 0.9450106157112527,
+        "f1": 0.667
+      },
+      "seed": 63,
+      "split": "development",
+      "success": true,
+      "trial_id": "tier-300-seed-63"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 11.272727272727275,
+        "ecd_improvement": 0.9404710920770878,
+        "f1": 0.286
+      },
+      "seed": 64,
+      "split": "development",
+      "success": true,
+      "trial_id": "tier-300-seed-64"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 7.652173913043479,
+        "ecd_improvement": 0.9437954595547718,
+        "f1": 0.909
+      },
+      "seed": 65,
+      "split": "development",
+      "success": true,
+      "trial_id": "tier-300-seed-65"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 7.2272727272727275,
+        "ecd_improvement": 0.9400352733686067,
+        "f1": 0.8
+      },
+      "seed": 66,
+      "split": "development",
+      "success": true,
+      "trial_id": "tier-300-seed-66"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 6.222222222222222,
+        "ecd_improvement": 0.9410042783156947,
+        "f1": 0.667
+      },
+      "seed": 67,
+      "split": "development",
+      "success": true,
+      "trial_id": "tier-300-seed-67"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 5.53125,
+        "ecd_improvement": 0.9441984056687334,
+        "f1": 0.8
+      },
+      "seed": 68,
+      "split": "development",
+      "success": true,
+      "trial_id": "tier-300-seed-68"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 11.944444444444446,
+        "ecd_improvement": 0.9443954104148279,
+        "f1": 0.909
+      },
+      "seed": 69,
+      "split": "development",
+      "success": true,
+      "trial_id": "tier-300-seed-69"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 8.454545454545455,
+        "ecd_improvement": 0.9447693307342431,
+        "f1": 0.667
+      },
+      "seed": 70,
+      "split": "development",
+      "success": true,
+      "trial_id": "tier-300-seed-70"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 7.333333333333334,
+        "ecd_improvement": 0.9421978021978022,
+        "f1": 0.909
+      },
+      "seed": 71,
+      "split": "development",
+      "success": true,
+      "trial_id": "tier-300-seed-71"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 6.888888888888889,
+        "ecd_improvement": 0.9411764705882353,
+        "f1": 0.667
+      },
+      "seed": 72,
+      "split": "development",
+      "success": true,
+      "trial_id": "tier-300-seed-72"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 7.5,
+        "ecd_improvement": 0.9449385853451927,
+        "f1": 0.909
+      },
+      "seed": 73,
+      "split": "development",
+      "success": true,
+      "trial_id": "tier-300-seed-73"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 11.105263157894738,
+        "ecd_improvement": 0.9402659690429475,
+        "f1": 0.667
+      },
+      "seed": 74,
+      "split": "development",
+      "success": true,
+      "trial_id": "tier-300-seed-74"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 7.727272727272728,
+        "ecd_improvement": 0.9410042783156947,
+        "f1": 0.667
+      },
+      "seed": 75,
+      "split": "development",
+      "success": true,
+      "trial_id": "tier-300-seed-75"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 9.65,
+        "ecd_improvement": 0.939539978094195,
+        "f1": 1.0
+      },
+      "seed": 76,
+      "split": "development",
+      "success": true,
+      "trial_id": "tier-300-seed-76"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 9.347826086956522,
+        "ecd_improvement": 0.9388497385769493,
+        "f1": 0.909
+      },
+      "seed": 77,
+      "split": "development",
+      "success": true,
+      "trial_id": "tier-300-seed-77"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 10.235294117647058,
+        "ecd_improvement": 0.9390569395017794,
+        "f1": 0.8
+      },
+      "seed": 78,
+      "split": "development",
+      "success": true,
+      "trial_id": "tier-300-seed-78"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 9.842105263157896,
+        "ecd_improvement": 0.9398190045248869,
+        "f1": 0.909
+      },
+      "seed": 79,
+      "split": "development",
+      "success": true,
+      "trial_id": "tier-300-seed-79"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 5.366666666666667,
+        "ecd_improvement": 0.9408322496749024,
+        "f1": 0.8
+      },
+      "seed": 80,
+      "split": "development",
+      "success": true,
+      "trial_id": "tier-300-seed-80"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 5.933333333333334,
+        "ecd_improvement": 0.9401197604790419,
+        "f1": 0.667
+      },
+      "seed": 81,
+      "split": "development",
+      "success": true,
+      "trial_id": "tier-300-seed-81"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 7.584158415841584,
+        "ecd_improvement": 0.9593361681046939,
+        "f1": 0.846
+      },
+      "seed": 62,
+      "split": "validation",
+      "success": true,
+      "trial_id": "tier-1500-seed-62"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 8.3,
+        "ecd_improvement": 0.9601596939199867,
+        "f1": 0.947
+      },
+      "seed": 63,
+      "split": "validation",
+      "success": true,
+      "trial_id": "tier-1500-seed-63"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 6.739495798319329,
+        "ecd_improvement": 0.9593889561333946,
+        "f1": 0.0
+      },
+      "seed": 64,
+      "split": "validation",
+      "success": true,
+      "trial_id": "tier-1500-seed-64"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 10.397590361445783,
+        "ecd_improvement": 0.960791745630659,
+        "f1": 0.889
+      },
+      "seed": 65,
+      "split": "validation",
+      "success": true,
+      "trial_id": "tier-1500-seed-65"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 4.52027027027027,
+        "ecd_improvement": 0.9594301899366877,
+        "f1": 0.0
+      },
+      "seed": 66,
+      "split": "validation",
+      "success": true,
+      "trial_id": "tier-1500-seed-66"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 7.223076923076922,
+        "ecd_improvement": 0.960122313911113,
+        "f1": 0.696
+      },
+      "seed": 67,
+      "split": "validation",
+      "success": true,
+      "trial_id": "tier-1500-seed-67"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 7.446428571428571,
+        "ecd_improvement": 0.9595643465197796,
+        "f1": 0.605
+      },
+      "seed": 68,
+      "split": "validation",
+      "success": true,
+      "trial_id": "tier-1500-seed-68"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 17.414414414414416,
+        "ecd_improvement": 0.9605553934036609,
+        "f1": 0.571
+      },
+      "seed": 69,
+      "split": "validation",
+      "success": true,
+      "trial_id": "tier-1500-seed-69"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 9.334630350194553,
+        "ecd_improvement": 0.9594784187505158,
+        "f1": 0.8
+      },
+      "seed": 70,
+      "split": "validation",
+      "success": true,
+      "trial_id": "tier-1500-seed-70"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 7.858585858585858,
+        "ecd_improvement": 0.9601169346418876,
+        "f1": 0.537
+      },
+      "seed": 71,
+      "split": "validation",
+      "success": true,
+      "trial_id": "tier-1500-seed-71"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 6.495798319327732,
+        "ecd_improvement": 0.9601856885952073,
+        "f1": 0.605
+      },
+      "seed": 72,
+      "split": "validation",
+      "success": true,
+      "trial_id": "tier-1500-seed-72"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 7.61267605633803,
+        "ecd_improvement": 0.9605114704776232,
+        "f1": 0.735
+      },
+      "seed": 73,
+      "split": "validation",
+      "success": true,
+      "trial_id": "tier-1500-seed-73"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 7.208695652173913,
+        "ecd_improvement": 0.9601206434316354,
+        "f1": 0.571
+      },
+      "seed": 74,
+      "split": "validation",
+      "success": true,
+      "trial_id": "tier-1500-seed-74"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 6.4159292035398225,
+        "ecd_improvement": 0.9597021100537857,
+        "f1": 0.696
+      },
+      "seed": 75,
+      "split": "validation",
+      "success": true,
+      "trial_id": "tier-1500-seed-75"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 11.474358974358974,
+        "ecd_improvement": 0.9593321210117375,
+        "f1": 0.537
+      },
+      "seed": 76,
+      "split": "validation",
+      "success": true,
+      "trial_id": "tier-1500-seed-76"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 9.951219512195122,
+        "ecd_improvement": 0.960699051642026,
+        "f1": 0.571
+      },
+      "seed": 77,
+      "split": "validation",
+      "success": true,
+      "trial_id": "tier-1500-seed-77"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 10.282051282051283,
+        "ecd_improvement": 0.9612624333739036,
+        "f1": 0.889
+      },
+      "seed": 78,
+      "split": "validation",
+      "success": true,
+      "trial_id": "tier-1500-seed-78"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 10.305882352941175,
+        "ecd_improvement": 0.9602665766829762,
+        "f1": 0.667
+      },
+      "seed": 79,
+      "split": "validation",
+      "success": true,
+      "trial_id": "tier-1500-seed-79"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 7.62,
+        "ecd_improvement": 0.9596847781003733,
+        "f1": 0.605
+      },
+      "seed": 80,
+      "split": "validation",
+      "success": true,
+      "trial_id": "tier-1500-seed-80"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 5.260563380281691,
+        "ecd_improvement": 0.9603282016579259,
+        "f1": 0.873
+      },
+      "seed": 81,
+      "split": "validation",
+      "success": true,
+      "trial_id": "tier-1500-seed-81"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 1.146135265700483,
+        "ecd_improvement": 0.9621588213011145,
+        "f1": 0.667
+      },
+      "seed": 62,
+      "split": "holdout",
+      "success": true,
+      "trial_id": "tier-3000-seed-62"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 6.72972972972973,
+        "ecd_improvement": 0.9622619023973623,
+        "f1": 0.0
+      },
+      "seed": 63,
+      "split": "holdout",
+      "success": true,
+      "trial_id": "tier-3000-seed-63"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 5.8528301886792455,
+        "ecd_improvement": 0.9623942462007886,
+        "f1": 0.621
+      },
+      "seed": 64,
+      "split": "holdout",
+      "success": true,
+      "trial_id": "tier-3000-seed-64"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 10.867549668874172,
+        "ecd_improvement": 0.9627480307109383,
+        "f1": 0.356
+      },
+      "seed": 65,
+      "split": "holdout",
+      "success": true,
+      "trial_id": "tier-3000-seed-65"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 6.160337552742616,
+        "ecd_improvement": 0.961868841452578,
+        "f1": 0.5
+      },
+      "seed": 66,
+      "split": "holdout",
+      "success": true,
+      "trial_id": "tier-3000-seed-66"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 3.1522727272727273,
+        "ecd_improvement": 0.9622410005739052,
+        "f1": 0.0
+      },
+      "seed": 67,
+      "split": "holdout",
+      "success": true,
+      "trial_id": "tier-3000-seed-67"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 8.842857142857143,
+        "ecd_improvement": 0.9619092776987513,
+        "f1": 0.787
+      },
+      "seed": 68,
+      "split": "holdout",
+      "success": true,
+      "trial_id": "tier-3000-seed-68"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 12.322147651006713,
+        "ecd_improvement": 0.9625559952592354,
+        "f1": 0.588
+      },
+      "seed": 69,
+      "split": "holdout",
+      "success": true,
+      "trial_id": "tier-3000-seed-69"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 9.98360655737705,
+        "ecd_improvement": 0.9618047360553851,
+        "f1": 0.621
+      },
+      "seed": 70,
+      "split": "holdout",
+      "success": true,
+      "trial_id": "tier-3000-seed-70"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 5.999999999999999,
+        "ecd_improvement": 0.9624734575618662,
+        "f1": 0.0
+      },
+      "seed": 71,
+      "split": "holdout",
+      "success": true,
+      "trial_id": "tier-3000-seed-71"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 6.5408560311284045,
+        "ecd_improvement": 0.9624709134663193,
+        "f1": 0.765
+      },
+      "seed": 72,
+      "split": "holdout",
+      "success": true,
+      "trial_id": "tier-3000-seed-72"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 7.4159292035398225,
+        "ecd_improvement": 0.9617457003678298,
+        "f1": 0.0
+      },
+      "seed": 73,
+      "split": "holdout",
+      "success": true,
+      "trial_id": "tier-3000-seed-73"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 9.133689839572192,
+        "ecd_improvement": 0.963524687922398,
+        "f1": 0.667
+      },
+      "seed": 74,
+      "split": "holdout",
+      "success": true,
+      "trial_id": "tier-3000-seed-74"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 5.25096525096525,
+        "ecd_improvement": 0.9623849700972594,
+        "f1": 0.0
+      },
+      "seed": 75,
+      "split": "holdout",
+      "success": true,
+      "trial_id": "tier-3000-seed-75"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 11.383116883116884,
+        "ecd_improvement": 0.9624427962758403,
+        "f1": 0.723
+      },
+      "seed": 76,
+      "split": "holdout",
+      "success": true,
+      "trial_id": "tier-3000-seed-76"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 11.000000000000002,
+        "ecd_improvement": 0.9621005108708566,
+        "f1": 0.696
+      },
+      "seed": 77,
+      "split": "holdout",
+      "success": true,
+      "trial_id": "tier-3000-seed-77"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 11.546012269938648,
+        "ecd_improvement": 0.9633218131330283,
+        "f1": 0.0
+      },
+      "seed": 78,
+      "split": "holdout",
+      "success": true,
+      "trial_id": "tier-3000-seed-78"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 10.791666666666668,
+        "ecd_improvement": 0.9627734756036869,
+        "f1": 0.687
+      },
+      "seed": 79,
+      "split": "holdout",
+      "success": true,
+      "trial_id": "tier-3000-seed-79"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 4.992424242424242,
+        "ecd_improvement": 0.9614574641395478,
+        "f1": 0.548
+      },
+      "seed": 80,
+      "split": "holdout",
+      "success": true,
+      "trial_id": "tier-3000-seed-80"
+    },
+    {
+      "metric_sources": {
+        "complexity_overhead": "derived from measured online route-preparation milliseconds; epsilon_ms=0.001",
+        "ecd_improvement": "derived from measured prompt-token usage in paired retained rows",
+        "f1": "measured model response scored against retained synthetic answer key"
+      },
+      "metrics": {
+        "complexity_overhead": 6.228782287822878,
+        "ecd_improvement": 0.9626874506708761,
+        "f1": 0.723
+      },
+      "seed": 81,
+      "split": "holdout",
+      "success": true,
+      "trial_id": "tier-3000-seed-81"
+    }
+  ]
+}
