@@ -51,7 +51,8 @@ def paired_permutation_test(differences: Iterable[float]) -> dict:
 
 
 def paired_bootstrap_percentile_ci(
-    values: Iterable[float], *, resamples: int = 10_000, random_seed: int = 20260815
+    values: Iterable[float], *, resamples: int = 10_000, random_seed: int = 20260815,
+    statistic: str = "mean(ecd_improvement)"
 ) -> dict:
     """Return a deterministic 95% percentile bootstrap CI for matched-pair values."""
     observed = [float(value) for value in values]
@@ -67,7 +68,7 @@ def paired_bootstrap_percentile_ci(
         "confidence_level": 0.95,
         "resamples": resamples,
         "random_seed": random_seed,
-        "statistic": "mean(ecd_improvement)",
+        "statistic": statistic,
         "observed_statistic": sum(observed) / n,
         "interval": [_percentile(means, 0.025), _percentile(means, 0.975)],
     }

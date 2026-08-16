@@ -19,6 +19,7 @@ from paired_analysis import paired_bootstrap_percentile_ci, paired_permutation_t
 
 
 ROUTE_UNGOVERNED = "ungoverned (context-stuffing)"
+ROUTE_LEXICAL = "lexical prefilter (cheap baseline)"
 ROUTE_GOVERNED = "governed (metadata layer)"
 TIER_SPLITS = {300: "development", 1500: "validation", 3000: "holdout"}
 EPSILON_MS = 0.001
@@ -68,6 +69,83 @@ def _r2_row_error(row: dict, route: str) -> str | None:
     return None
 
 
+def _r3_pairs(rows: list[dict], left: str, right: str, fn_rate: float, tiers: set[int]) -> tuple[dict, list[str]]:
+    """Return complete seed-matched R3 route pairs, never silently dropping a missing row."""
+    indexed: dict[tuple[int, int], dict[str, dict]] = {}
+    for row in rows:
+        if row.get("route") not in {left, right} or row.get("tier") not in tiers:
+            continue
+        if row.get("classifier_fn_rate") != fn_rate:
+            continue
+        indexed.setdefault((int(row["tier"]), int(row["seed"])), {})[row["route"]] = row
+    expected = {(tier, seed) for tier in tiers for seed in range(62, 82)}
+    failures, pairs = [], {}
+    for key in sorted(expected):
+        routes = indexed.get(key, {})
+        if set(routes) != {left, right}:
+            failures.append(f"missing retained pair for tier={key[0]} seed={key[1]} fn_rate={fn_rate}")
+            continue
+        error = _r2_row_error(routes[left], left) or _r2_row_error(routes[right], right)
+        if error:
+            failures.append(f"tier={key[0]} seed={key[1]} fn_rate={fn_rate}: {error}")
+            continue
+        pairs[key] = routes
+    return pairs, failures
+
+
+def _r3_claims(rows: list[dict]) -> dict:
+    """Evaluate the four preregistered claims independently and fail closed per claim."""
+    def verdict(name, pairs, failures, rule):
+        if failures:
+            return {"verdict": "INCONCLUSIVE", "reason": "retained evidence is incomplete", "failures": failures}
+        checks = rule(pairs)
+        return {"verdict": "ACCEPTED" if all(item["passed"] for item in checks) else "REJECTED",
+                "checks": checks}
+
+    def cost_rule(pairs):
+        checks = []
+        for tier in (300, 1500, 3000):
+            values = [1 - pair[ROUTE_GOVERNED]["prompt_tokens"] / pair[ROUTE_UNGOVERNED]["prompt_tokens"]
+                      for (observed_tier, _), pair in pairs.items() if observed_tier == tier]
+            checks.append({"tier": tier, "metric": "mean_prompt_token_reduction", "actual": _mean(values),
+                           "required": 0.5, "passed": _mean(values) >= 0.5})
+        return checks
+
+    def full_quality_rule(pairs):
+        checks = []
+        for tier in (1500, 3000):
+            differences = [pair[ROUTE_GOVERNED]["f1"] - pair[ROUTE_UNGOVERNED]["f1"]
+                           for (observed_tier, _), pair in pairs.items() if observed_tier == tier]
+            ci = paired_bootstrap_percentile_ci(differences, statistic="mean(governed_f1 - ungoverned_f1)")
+            checks.append({"tier": tier, "metric": "paired_f1_difference_ci", "confidence_interval": ci["interval"],
+                           "required_lower_bound": -0.02, "passed": ci["interval"][0] >= -0.02})
+        return checks
+
+    def lexical_rule(pairs):
+        differences = [pair[ROUTE_GOVERNED]["f1"] - pair[ROUTE_LEXICAL]["f1"] for pair in pairs.values()]
+        token_ratios = [pair[ROUTE_GOVERNED]["prompt_tokens"] / pair[ROUTE_LEXICAL]["prompt_tokens"]
+                        for pair in pairs.values()]
+        ci = paired_bootstrap_percentile_ci(differences, statistic="mean(governed_f1 - lexical_f1)")
+        return [{"tier": 3000, "metric": "paired_f1_difference_ci", "confidence_interval": ci["interval"],
+                 "required_lower_bound": 0.0, "passed": ci["interval"][0] > 0.0},
+                {"tier": 3000, "metric": "mean_prompt_token_ratio", "actual": _mean(token_ratios),
+                 "maximum": 1.10, "passed": _mean(token_ratios) <= 1.10}]
+
+    cost_pairs, cost_failures = _r3_pairs(rows, ROUTE_UNGOVERNED, ROUTE_GOVERNED, 0.0, {300, 1500, 3000})
+    quality_pairs, quality_failures = _r3_pairs(rows, ROUTE_UNGOVERNED, ROUTE_GOVERNED, 0.0, {1500, 3000})
+    lexical_pairs, lexical_failures = _r3_pairs(rows, ROUTE_LEXICAL, ROUTE_GOVERNED, 0.0, {3000})
+    sensitivity = {}
+    for rate in (0.05, 0.10):
+        pairs, failures = _r3_pairs(rows, ROUTE_LEXICAL, ROUTE_GOVERNED, rate, {3000})
+        sensitivity[str(rate)] = verdict("sensitivity", pairs, failures, lexical_rule)
+    sensitivity_verdict = ("INCONCLUSIVE" if any(v["verdict"] == "INCONCLUSIVE" for v in sensitivity.values())
+                           else "ACCEPTED" if all(v["verdict"] == "ACCEPTED" for v in sensitivity.values()) else "REJECTED")
+    return {"selective_context_cost_vs_full": verdict("cost", cost_pairs, cost_failures, cost_rule),
+            "governed_quality_vs_full": verdict("quality", quality_pairs, quality_failures, full_quality_rule),
+            "governed_value_vs_lexical": verdict("lexical", lexical_pairs, lexical_failures, lexical_rule),
+            "governed_sensitivity_vs_lexical": {"verdict": sensitivity_verdict, "conditions": sensitivity}}
+
+
 def convert(report_path: Path, contract_path: Path) -> dict:
     report = json.loads(report_path.read_text(encoding="utf-8"))
     rows = report.get("results")
@@ -79,12 +157,15 @@ def convert(report_path: Path, contract_path: Path) -> dict:
     is_r2 = report.get("schema_version") == "2.0"
     provenance_error = _r2_provenance_error(report) if is_r2 else None
 
+    is_r3 = contract_path.stem == "token-bleed-mac-r3"
     paired: dict[tuple[int, int], dict[str, dict]] = {}
     for row in rows:
         try:
             tier, seed, route = int(row["tier"]), int(row["seed"]), row["route"]
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("each report row needs integer tier/seed and route") from exc
+        if is_r3 and row.get("classifier_fn_rate") != 0.0:
+            continue
         if tier in TIER_SPLITS and route in {ROUTE_UNGOVERNED, ROUTE_GOVERNED}:
             paired.setdefault((tier, seed), {})[route] = row
 
@@ -158,6 +239,11 @@ def convert(report_path: Path, contract_path: Path) -> dict:
     elif is_r2:
         evidence["adapter_notes"].append(
             "R2 development pairs are incomplete; statistical evidence is intentionally absent."
+        )
+    if is_r3:
+        evidence["claim_scoped_verdicts"] = _r3_claims(rows)
+        evidence["adapter_notes"].append(
+            "R3 claim-scoped verdicts are separate from the generic ACE verdict; each claim is assessed only against its declared comparator and condition."
         )
     return evidence
 
