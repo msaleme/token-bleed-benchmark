@@ -1,7 +1,10 @@
 experiment_id: token-bleed-mac-r3
 baseline: ungoverned-context-stuffing
 mutation_scope: [synthetic-catalog, route-selection, named-mac-local-endpoint]
-trials: 60
+# ACE's primary matched trial unit is one seed. The two additional sensitivity
+# conditions are retained for every seed and are declared below, not treated as
+# replacement seeds or pooled primary trials.
+trials: 20
 quality_floor: {metric: f1, minimum_relative_to_baseline: 0.98}
 benchmark_sets:
   development: [synthetic-catalog-300]
@@ -17,6 +20,7 @@ reporting: {report_format: [json, markdown]}
 trial_configuration:
   seeds: [62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81]
   classifier_false_negative_rates: [0.0, 0.05, 0.10]
+  retained_route_rows_per_split: 180
   classifier_false_positive_rate: 1.0
   route_order: independently-randomized-per-seed-and-false-negative-rate
 telemetry_provenance: measured
