@@ -65,6 +65,14 @@ class GovernedCandidateTests(unittest.TestCase):
         self.assertEqual(set(first), expected)
         self.assertEqual(set(other), expected)
 
+    def test_r3_route_order_is_condition_specific_and_deterministic(self):
+        zero = [name for name, _ in benchmark.randomized_routes(62, 0.0)]
+        again = [name for name, _ in benchmark.randomized_routes(62, 0.0)]
+        sensitivity = [name for name, _ in benchmark.randomized_routes(62, 0.1)]
+        self.assertEqual(zero, again)
+        self.assertEqual(set(zero), {name for name, _ in benchmark.ROUTES})
+        self.assertEqual(set(sensitivity), {name for name, _ in benchmark.ROUTES})
+
 
 class ReportTests(unittest.TestCase):
     def test_report_records_classifier_and_catalog_conditions(self):
@@ -100,6 +108,19 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(summary["prompt_tokens_values"], [10, 20])
         self.assertLess(summary["f1_ci95_low"], summary["f1_mean"])
         self.assertGreater(summary["f1_ci95_high"], summary["f1_mean"])
+
+    def test_aggregate_separates_classifier_sensitivity_conditions(self):
+        rows = [
+            {"tier": 300, "route": "test", "classifier_fn_rate": 0.0, "prompt_tokens": 10,
+             "completion_tokens": 2, "reasoning_tokens": 0, "total_tokens": 12, "latency_s": 1,
+             "precision": 0.5, "recall": 0.5, "f1": 0.5},
+            {"tier": 300, "route": "test", "classifier_fn_rate": 0.1, "prompt_tokens": 20,
+             "completion_tokens": 2, "reasoning_tokens": 0, "total_tokens": 22, "latency_s": 1,
+             "precision": 1.0, "recall": 1.0, "f1": 1.0},
+        ]
+        summary = benchmark.aggregate(rows)
+        self.assertEqual(len(summary), 2)
+        self.assertEqual({item["classifier_fn_rate"] for item in summary}, {0.0, 0.1})
 
     def test_r2_context_preflight_refuses_oversized_constructed_input(self):
         result = benchmark.preflight_context(

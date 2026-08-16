@@ -12,6 +12,31 @@ SPEC.loader.exec_module(adapter)
 
 
 class TokenBleedToAceTests(unittest.TestCase):
+    def test_r3_missing_sensitivity_pair_is_inconclusive(self):
+        rows = []
+        for tier in (300, 1500, 3000):
+            for seed in range(62, 82):
+                for rate in (0.0, 0.05, 0.1):
+                    for route, prompt, f1 in ((adapter.ROUTE_UNGOVERNED, 100, 0.5),
+                                              (adapter.ROUTE_LEXICAL, 20, 0.6),
+                                              (adapter.ROUTE_GOVERNED, 20, 0.7)):
+                        if tier == 3000 and seed == 62 and rate == 0.1 and route == adapter.ROUTE_GOVERNED:
+                            continue
+                        rows.append({"tier": tier, "seed": seed, "route": route, "classifier_fn_rate": rate,
+                                     "success": True, "attempts": [{"attempt": 1, "outcome": "success"}],
+                                     "prompt_tokens": prompt, "completion_tokens": 10, "token_parameter": "max_tokens",
+                                     "f1": f1, "route_preparation_ms": 1.0, "prompt_truncated_by_context": False,
+                                     "context_window_tokens": 10000, "constructed_input_token_count": 500,
+                                     "requested_completion_tokens": 100, "completion_cap_enforced": True,
+                                     "completion_cap_parameter": "max_tokens"})
+        with tempfile.TemporaryDirectory() as tmp:
+            report, contract = Path(tmp) / "report.json", Path(tmp) / "token-bleed-mac-r3.yaml"
+            report.write_text(json.dumps({"schema_version": "2.0", "git_commit": "abc123", "results": rows,
+                "r2_provenance": {"endpoint_class": "local", "model_digest": "sha256:x", "runtime_version": "test", "hardware": "test"},
+                "r2_execution": {"completion_cap_enforced": True, "completion_cap_parameter": "max_tokens"}}))
+            contract.write_text("experiment_id: token-bleed-mac-r3\n")
+            evidence = adapter.convert(report, contract)
+        self.assertEqual(evidence["claim_scoped_verdicts"]["governed_sensitivity_vs_lexical"]["verdict"], "INCONCLUSIVE")
     def test_converts_retained_route_pairs_without_inventing_missing_evidence(self):
         rows = []
         for tier in (300, 1500, 3000):
