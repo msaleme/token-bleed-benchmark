@@ -1,0 +1,252 @@
+{
+  "artifact_type": "ace-decision-pack",
+  "claim_boundary": "This decision pack reconciles retained, user-supplied evidence against an ACE contract. It does not execute a workload, attest to data collection, independently reproduce a result, or certify deployment safety.",
+  "config_sha256": "22d426ac1b0e0bced39e3af82d6ac6d7310a51a3581049874f59b01adc9e5354",
+  "created_at_utc": "2026-08-16T23:31:59.541642+00:00",
+  "evidence_gaps": [],
+  "evidence_schema_version": "1.0",
+  "experiment_id": "token-bleed-mac-r3",
+  "failed_trial_count": 0,
+  "gates": [
+    {
+      "evidence": {
+        "declared_seed_count": 20,
+        "declared_trials": 20
+      },
+      "gate": "contract_trial_plan",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "token-bleed-mac-r3",
+        "expected": "token-bleed-mac-r3"
+      },
+      "gate": "experiment_identity",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "22d426ac1b0e0bced39e3af82d6ac6d7310a51a3581049874f59b01adc9e5354",
+        "expected": "22d426ac1b0e0bced39e3af82d6ac6d7310a51a3581049874f59b01adc9e5354"
+      },
+      "gate": "config_digest",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "measured",
+        "expected": "measured"
+      },
+      "gate": "telemetry_provenance",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "76ef98c11824da62337694ad71f0f08aebc0e63b"
+      },
+      "gate": "source_revision_retained",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual_successful_trials": 20,
+        "missing_declared_seeds": [],
+        "required_trials": 20
+      },
+      "gate": "development_trial_coverage",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual_successful_trials": 20,
+        "missing_declared_seeds": [],
+        "required_trials": 20
+      },
+      "gate": "validation_trial_coverage",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual_successful_trials": 20,
+        "missing_declared_seeds": [],
+        "required_trials": 20
+      },
+      "gate": "holdout_trial_coverage",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": 0.78045,
+        "required": 0.22567766666666667
+      },
+      "gate": "development_quality_floor",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": 0.632,
+        "required": 0.22567766666666667
+      },
+      "gate": "validation_quality_floor",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": 0.44745,
+        "required": 0.22567766666666667
+      },
+      "gate": "holdout_quality_floor",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": 0.9417252869137737,
+        "required": 0.5
+      },
+      "gate": "development_minimum_ecd",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": 0.9600518617989786,
+        "required": true,
+        "threshold": 0.5
+      },
+      "gate": "validation_minimum_ecd",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": 0.9623663045879783,
+        "required": true,
+        "threshold": 0.5
+      },
+      "gate": "holdout_minimum_ecd",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": 7.2479248046875e-05,
+        "required": "p_value < 0.05"
+      },
+      "gate": "development_statistical_significance",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": [
+          0.940850148545722,
+          0.9426490256525002
+        ],
+        "required": "ECD CI excludes zero"
+      },
+      "gate": "development_confidence_interval",
+      "passed": true
+    }
+  ],
+  "package_version": "0.1.0",
+  "reasons": [
+    "Retained evidence satisfies the configured rule checks. Independent reproduction is still outside this assessment."
+  ],
+  "schema_version": "1.0",
+  "source_revision": "76ef98c11824da62337694ad71f0f08aebc0e63b",
+  "split_summary": {
+    "development": {
+      "failed_trials": 0,
+      "means": {
+        "complexity_overhead": 8.022842091581449,
+        "ecd_improvement": 0.9417252869137737,
+        "f1": 0.78045
+      },
+      "missing_declared_seeds": [],
+      "observed_seeds": [
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81
+      ],
+      "successful_trials": 20
+    },
+    "holdout": {
+      "failed_trials": 0,
+      "means": {
+        "complexity_overhead": 7.7670454579707435,
+        "ecd_improvement": 0.9623663045879783,
+        "f1": 0.44745
+      },
+      "missing_declared_seeds": [],
+      "observed_seeds": [
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81
+      ],
+      "successful_trials": 20
+    },
+    "validation": {
+      "failed_trials": 0,
+      "means": {
+        "complexity_overhead": 8.472291284839251,
+        "ecd_improvement": 0.9600518617989786,
+        "f1": 0.632
+      },
+      "missing_declared_seeds": [],
+      "observed_seeds": [
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81
+      ],
+      "successful_trials": 20
+    }
+  },
+  "verdict": "ACCEPTED"
+}

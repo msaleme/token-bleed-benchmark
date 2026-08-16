@@ -1,0 +1,326 @@
+{
+  "schema_version": "1.0",
+  "artifact_type": "token-bleed-context-preflight",
+  "classifier_fn_rates": [
+    0.0,
+    0.05,
+    0.1
+  ],
+  "rows": [
+    {
+      "tier": 300,
+      "seed": 62,
+      "route": "ungoverned (context-stuffing)",
+      "classifier_fn_rate": 0.0,
+      "constructed_input_token_count": 10210,
+      "token_count_method": "utf8_byte_upper_bound",
+      "context_window_tokens": 131072,
+      "requested_completion_tokens": 3000,
+      "fits_context_budget": true
+    },
+    {
+      "tier": 300,
+      "seed": 62,
+      "route": "lexical prefilter (cheap baseline)",
+      "classifier_fn_rate": 0.0,
+      "constructed_input_token_count": 611,
+      "token_count_method": "utf8_byte_upper_bound",
+      "context_window_tokens": 131072,
+      "requested_completion_tokens": 3000,
+      "fits_context_budget": true
+    },
+    {
+      "tier": 300,
+      "seed": 62,
+      "route": "governed (metadata layer)",
+      "classifier_fn_rate": 0.0,
+      "constructed_input_token_count": 853,
+      "token_count_method": "utf8_byte_upper_bound",
+      "context_window_tokens": 131072,
+      "requested_completion_tokens": 3000,
+      "fits_context_budget": true
+    },
+    {
+      "tier": 1500,
+      "seed": 62,
+      "route": "ungoverned (context-stuffing)",
+      "classifier_fn_rate": 0.0,
+      "constructed_input_token_count": 50528,
+      "token_count_method": "utf8_byte_upper_bound",
+      "context_window_tokens": 131072,
+      "requested_completion_tokens": 3000,
+      "fits_context_budget": true
+    },
+    {
+      "tier": 1500,
+      "seed": 62,
+      "route": "lexical prefilter (cheap baseline)",
+      "classifier_fn_rate": 0.0,
+      "constructed_input_token_count": 1153,
+      "token_count_method": "utf8_byte_upper_bound",
+      "context_window_tokens": 131072,
+      "requested_completion_tokens": 3000,
+      "fits_context_budget": true
+    },
+    {
+      "tier": 1500,
+      "seed": 62,
+      "route": "governed (metadata layer)",
+      "classifier_fn_rate": 0.0,
+      "constructed_input_token_count": 2367,
+      "token_count_method": "utf8_byte_upper_bound",
+      "context_window_tokens": 131072,
+      "requested_completion_tokens": 3000,
+      "fits_context_budget": true
+    },
+    {
+      "tier": 3000,
+      "seed": 62,
+      "route": "ungoverned (context-stuffing)",
+      "classifier_fn_rate": 0.0,
+      "constructed_input_token_count": 101140,
+      "token_count_method": "utf8_byte_upper_bound",
+      "context_window_tokens": 131072,
+      "requested_completion_tokens": 3000,
+      "fits_context_budget": true
+    },
+    {
+      "tier": 3000,
+      "seed": 62,
+      "route": "lexical prefilter (cheap baseline)",
+      "classifier_fn_rate": 0.0,
+      "constructed_input_token_count": 1870,
+      "token_count_method": "utf8_byte_upper_bound",
+      "context_window_tokens": 131072,
+      "requested_completion_tokens": 3000,
+      "fits_context_budget": true
+    },
+    {
+      "tier": 3000,
+      "seed": 62,
+      "route": "governed (metadata layer)",
+      "classifier_fn_rate": 0.0,
+      "constructed_input_token_count": 4281,
+      "token_count_method": "utf8_byte_upper_bound",
+      "context_window_tokens": 131072,
+      "requested_completion_tokens": 3000,
+      "fits_context_budget": true
+    },
+    {
+      "tier": 300,
+      "seed": 62,
+      "route": "ungoverned (context-stuffing)",
+      "classifier_fn_rate": 0.05,
+      "constructed_input_token_count": 10210,
+      "token_count_method": "utf8_byte_upper_bound",
+      "context_window_tokens": 131072,
+      "requested_completion_tokens": 3000,
+      "fits_context_budget": true
+    },
+    {
+      "tier": 300,
+      "seed": 62,
+      "route": "lexical prefilter (cheap baseline)",
+      "classifier_fn_rate": 0.05,
+      "constructed_input_token_count": 611,
+      "token_count_method": "utf8_byte_upper_bound",
+      "context_window_tokens": 131072,
+      "requested_completion_tokens": 3000,
+      "fits_context_budget": true
+    },
+    {
+      "tier": 300,
+      "seed": 62,
+      "route": "governed (metadata layer)",
+      "classifier_fn_rate": 0.05,
+      "constructed_input_token_count": 853,
+      "token_count_method": "utf8_byte_upper_bound",
+      "context_window_tokens": 131072,
+      "requested_completion_tokens": 3000,
+      "fits_context_budget": true
+    },
+    {
+      "tier": 1500,
+      "seed": 62,
+      "route": "ungoverned (context-stuffing)",
+      "classifier_fn_rate": 0.05,
+      "constructed_input_token_count": 50528,
+      "token_count_method": "utf8_byte_upper_bound",
+      "context_window_tokens": 131072,
+      "requested_completion_tokens": 3000,
+      "fits_context_budget": true
+    },
+    {
+      "tier": 1500,
+      "seed": 62,
+      "route": "lexical prefilter (cheap baseline)",
+      "classifier_fn_rate": 0.05,
+      "constructed_input_token_count": 1153,
+      "token_count_method": "utf8_byte_upper_bound",
+      "context_window_tokens": 131072,
+      "requested_completion_tokens": 3000,
+      "fits_context_budget": true
+    },
+    {
+      "tier": 1500,
+      "seed": 62,
+      "route": "governed (metadata layer)",
+      "classifier_fn_rate": 0.05,
+      "constructed_input_token_count": 2323,
+      "token_count_method": "utf8_byte_upper_bound",
+      "context_window_tokens": 131072,
+      "requested_completion_tokens": 3000,
+      "fits_context_budget": true
+    },
+    {
+      "tier": 3000,
+      "seed": 62,
+      "route": "ungoverned (context-stuffing)",
+      "classifier_fn_rate": 0.05,
+      "constructed_input_token_count": 101140,
+      "token_count_method": "utf8_byte_upper_bound",
+      "context_window_tokens": 131072,
+      "requested_completion_tokens": 3000,
+      "fits_context_budget": true
+    },
+    {
+      "tier": 3000,
+      "seed": 62,
+      "route": "lexical prefilter (cheap baseline)",
+      "classifier_fn_rate": 0.05,
+      "constructed_input_token_count": 1870,
+      "token_count_method": "utf8_byte_upper_bound",
+      "context_window_tokens": 131072,
+      "requested_completion_tokens": 3000,
+      "fits_context_budget": true
+    },
+    {
+      "tier": 3000,
+      "seed": 62,
+      "route": "governed (metadata layer)",
+      "classifier_fn_rate": 0.05,
+      "constructed_input_token_count": 4181,
+      "token_count_method": "utf8_byte_upper_bound",
+      "context_window_tokens": 131072,
+      "requested_completion_tokens": 3000,
+      "fits_context_budget": true
+    },
+    {
+      "tier": 300,
+      "seed": 62,
+      "route": "ungoverned (context-stuffing)",
+      "classifier_fn_rate": 0.1,
+      "constructed_input_token_count": 10210,
+      "token_count_method": "utf8_byte_upper_bound",
+      "context_window_tokens": 131072,
+      "requested_completion_tokens": 3000,
+      "fits_context_budget": true
+    },
+    {
+      "tier": 300,
+      "seed": 62,
+      "route": "lexical prefilter (cheap baseline)",
+      "classifier_fn_rate": 0.1,
+      "constructed_input_token_count": 611,
+      "token_count_method": "utf8_byte_upper_bound",
+      "context_window_tokens": 131072,
+      "requested_completion_tokens": 3000,
+      "fits_context_budget": true
+    },
+    {
+      "tier": 300,
+      "seed": 62,
+      "route": "governed (metadata layer)",
+      "classifier_fn_rate": 0.1,
+      "constructed_input_token_count": 820,
+      "token_count_method": "utf8_byte_upper_bound",
+      "context_window_tokens": 131072,
+      "requested_completion_tokens": 3000,
+      "fits_context_budget": true
+    },
+    {
+      "tier": 1500,
+      "seed": 62,
+      "route": "ungoverned (context-stuffing)",
+      "classifier_fn_rate": 0.1,
+      "constructed_input_token_count": 50528,
+      "token_count_method": "utf8_byte_upper_bound",
+      "context_window_tokens": 131072,
+      "requested_completion_tokens": 3000,
+      "fits_context_budget": true
+    },
+    {
+      "tier": 1500,
+      "seed": 62,
+      "route": "lexical prefilter (cheap baseline)",
+      "classifier_fn_rate": 0.1,
+      "constructed_input_token_count": 1153,
+      "token_count_method": "utf8_byte_upper_bound",
+      "context_window_tokens": 131072,
+      "requested_completion_tokens": 3000,
+      "fits_context_budget": true
+    },
+    {
+      "tier": 1500,
+      "seed": 62,
+      "route": "governed (metadata layer)",
+      "classifier_fn_rate": 0.1,
+      "constructed_input_token_count": 2303,
+      "token_count_method": "utf8_byte_upper_bound",
+      "context_window_tokens": 131072,
+      "requested_completion_tokens": 3000,
+      "fits_context_budget": true
+    },
+    {
+      "tier": 3000,
+      "seed": 62,
+      "route": "ungoverned (context-stuffing)",
+      "classifier_fn_rate": 0.1,
+      "constructed_input_token_count": 101140,
+      "token_count_method": "utf8_byte_upper_bound",
+      "context_window_tokens": 131072,
+      "requested_completion_tokens": 3000,
+      "fits_context_budget": true
+    },
+    {
+      "tier": 3000,
+      "seed": 62,
+      "route": "lexical prefilter (cheap baseline)",
+      "classifier_fn_rate": 0.1,
+      "constructed_input_token_count": 1870,
+      "token_count_method": "utf8_byte_upper_bound",
+      "context_window_tokens": 131072,
+      "requested_completion_tokens": 3000,
+      "fits_context_budget": true
+    },
+    {
+      "tier": 3000,
+      "seed": 62,
+      "route": "governed (metadata layer)",
+      "classifier_fn_rate": 0.1,
+      "constructed_input_token_count": 4068,
+      "token_count_method": "utf8_byte_upper_bound",
+      "context_window_tokens": 131072,
+      "requested_completion_tokens": 3000,
+      "fits_context_budget": true
+    }
+  ],
+  "failures": [],
+  "passed": true,
+  "runtime_context_probe": {
+    "probe_prompt": "Reply only: OK",
+    "returned_model": "qwen3-coder:30b",
+    "requested_num_ctx": 131072,
+    "observed_context_length": 131072,
+    "api": "/api/ps"
+  },
+  "completion_cap_probe": {
+    "probe_prompt": "long-output completion-cap probe",
+    "requested_completion_tokens": 8,
+    "observed_completion_tokens": 8,
+    "token_parameter": "max_tokens",
+    "returned_model": "qwen3-coder:30b",
+    "enforced": true,
+    "failure_reason": null
+  }
+}
