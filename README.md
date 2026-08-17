@@ -1,10 +1,25 @@
 # Token-Bleed Benchmark
 
-**Reproduce the "Stop the Token Bleed" finding yourself — on any model, in an afternoon.**
+**Reproduce a bounded context-selection result yourself — on any compatible model, in an afternoon.**
+
+## Latest retained result: R5
+
+The conclusive R5 record is available in [`docs/R5_RESULTS.md`](docs/R5_RESULTS.md) and as the
+immutable [`r5-results-2026-08-17` release](https://github.com/msaleme/token-bleed-benchmark/releases/tag/r5-results-2026-08-17).
+
+On its frozen local configuration, compact governed selection used **96.9% to 97.9% fewer prompt
+tokens** and achieved higher F1 than raw full-context stuffing. It did **not** clear the separately
+preregistered 3x prompt-token ceiling against the cheap lexical baseline. The public result packet
+includes the contract hash, preflight, ACE evidence, claim-scoped decision pack, and raw-report
+hash; the host-identifying raw report remains private.
+
+This is a synthetic, named-endpoint runtime characterization. It is not a production ROI claim or
+a claim that governance is always more cost-effective than lexical filtering.
 
 The route an AI agent takes to reach enterprise data — not just the model — drives both
 **cost** and **accuracy**. This is a small, honest harness that measures it: same model, same
-task, two ways of reaching the data (ungoverned "context stuffing" vs. a governed,
+task, three ways of reaching the data (ungoverned "context stuffing," a cheap lexical prefilter,
+and a governed,
 pre-classified metadata layer). It reports real token counts and a real F1 accuracy score for
 each route, so you can see the gap on your own endpoint.
 
