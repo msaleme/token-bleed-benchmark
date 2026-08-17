@@ -32,8 +32,10 @@ customer-data result, or a replication of the sponsored McKnight Consulting Grou
 ## Decision
 
 ACE's generic contract assessment returned **ACCEPTED**, with no evidence gaps and no failed
-generic rule checks. That assessment concerns governed routing against full-context stuffing.
-R3's preregistered claim-scoped decisions must be read separately:
+generic rule checks. The public decision pack was regenerated with ACE v0.1.2, which retains the
+generic verdict and every contract-declared claim scope without collapsing them. That generic
+assessment concerns governed routing against full-context stuffing. R3's preregistered
+claim-scoped decisions must be read separately:
 
 | Claim | Comparator and condition | Verdict |
 |---|---|---:|
