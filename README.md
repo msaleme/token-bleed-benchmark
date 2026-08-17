@@ -88,6 +88,10 @@ The completed R2.1 result, preregistered R3 protocol, and completed R3 result ar
 [`docs/R3_RESULTS.md`](docs/R3_RESULTS.md). These are bounded synthetic results on one named
 local endpoint, not a replication of the sponsored study or a production ROI claim.
 
+R4 is a preregistered boundary test, not a rerun: it removes Government-ID cues from physical
+field names and tests whether glossary, lineage, and access-policy metadata can earn their added
+complexity against the same lexical baseline. See [`docs/R4_PROTOCOL.md`](docs/R4_PROTOCOL.md).
+
 ### Flags that matter
 
 | Flag | Default | Why |
