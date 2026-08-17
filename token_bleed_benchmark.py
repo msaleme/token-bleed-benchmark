@@ -66,6 +66,21 @@ TASK = ("Show me all the assets (fully-qualified COLUMN names in TABLE.COLUMN fo
         "A Government ID is a national identity number (e.g. Social Security Number). "
         "Do NOT include tax IDs, driver license numbers, account numbers, or generic document-type fields.")
 
+# R4 deliberately removes the answer from physical field names.  It is a new synthetic
+# task, not a re-analysis of R3: selection must use compact business glossary, lineage,
+# and access-policy metadata.  The policy rule is part of the answer key.
+R4_TASK = ("For a regulated identity-verification report, list ONLY the fully-qualified COLUMN "
+           "names that represent a government-issued identity number AND are approved for analyst "
+           "use. Return one exact TABLE.COLUMN name per line. Do not include taxpayer identifiers, "
+           "driver-license references, account references, generic document fields, or restricted fields.")
+R4_OPAQUE_NAMES = ["PERSON_REF", "SUBJECT_KEY", "CITIZEN_REF", "IDENTITY_TOKEN", "PARTY_HANDLE"]
+R4_DECOY_METADATA = [
+    ("taxpayer identifier", "tax-service", "restricted"),
+    ("driver license reference", "licensing", "approved"),
+    ("bank account reference", "payments", "approved"),
+    ("document type code", "document-store", "approved"),
+]
+
 # A line that negates is not an answer. Models routinely restate the exclusion list.
 NEGATION = re.compile(
     r"\b(?:not|no|non|exclude[sd]?|excluding|exclusion|omit(?:ted|ting)?|ignore[sd]?|"
@@ -159,6 +174,62 @@ def build_catalog(n_objects, seed, gov_id_rate=0.02, decoy_rate=0.08):
                 answer_key.add(fq)
             object_index += 1
     return columns, answer_key
+
+
+def build_r4_catalog(n_objects, seed, gov_id_rate=0.02, decoy_rate=0.08):
+    """Build R4's opaque-schema, metadata-and-policy selection task.
+
+    Physical names intentionally carry no Government-ID lexical cue.  Each catalog entry
+    has compact, synthetic governed metadata.  The answer key includes only approved
+    Government-ID fields; restricted Government-ID fields remain visible as policy decoys.
+    """
+    try:
+        from faker import Faker
+    except ImportError:
+        die("faker not installed. Run: pip install -r requirements.txt")
+    fake = Faker(); Faker.seed(seed); rng = random.Random(seed)
+    columns, answer_key = [], set()
+    n_tables = max(5, n_objects // 20)
+    n_gov = max(2, round(n_objects * gov_id_rate))
+    n_decoy = min(round(n_objects * decoy_rate), n_objects - n_gov)
+    labels = (["gov"] * n_gov) + (["decoy"] * n_decoy) + (["background"] * (n_objects - n_gov - n_decoy))
+    rng.shuffle(labels)
+    object_index = 0
+    for table_index in range(n_tables):
+        table = f"{fake.word().upper()}_{fake.word().upper()}_{table_index}"
+        for _ in range(max(3, n_objects // n_tables)):
+            if object_index >= n_objects:
+                break
+            label = labels[object_index]
+            if label == "gov":
+                # Deterministic, balanced policy condition: half the Government-ID fields are
+                # deliberately restricted and therefore not valid answers.
+                approved = (object_index + seed) % 2 == 0
+                physical = rng.choice(R4_OPAQUE_NAMES)
+                glossary, lineage, policy = "government-issued identity number", "identity-vault", ("approved" if approved else "restricted")
+                is_target = approved
+                classifier_decoy = not approved
+            elif label == "decoy":
+                physical = rng.choice(R4_OPAQUE_NAMES)
+                glossary, lineage, policy = rng.choice(R4_DECOY_METADATA)
+                is_target, classifier_decoy = False, True
+            else:
+                physical = f"{fake.word().upper()}_{fake.word().upper()}"
+                glossary, lineage, policy = "operational attribute", "business-system", "approved"
+                is_target, classifier_decoy = False, False
+            fq = f"{table}.{physical}_{object_index}"
+            columns.append({"fqname": fq, "is_gov_id": label == "gov", "is_target": is_target,
+                            "r4_metadata": {"business_term": glossary, "lineage": lineage,
+                                            "access_policy": policy},
+                            "classifier_decoy": classifier_decoy})
+            if is_target:
+                answer_key.add(fq)
+            object_index += 1
+    return columns, answer_key
+
+
+def build_catalog_for_scenario(n_objects, seed, scenario):
+    return build_r4_catalog(n_objects, seed) if scenario == "r4-semantic-access" else build_catalog(n_objects, seed)
 
 
 def _post(payload, base, key, timeout=None):
@@ -296,10 +367,32 @@ def _call_route(prompt, *, preparation_ms=0, context_window_tokens=None, max_tok
     return result
 
 
+def _is_r4(columns):
+    return bool(columns and "r4_metadata" in columns[0])
+
+
+def _task_for(columns):
+    return R4_TASK if _is_r4(columns) else TASK
+
+
+def _catalog_line(column):
+    """Render the context supplied to a route without ever exposing the answer key."""
+    if not column.get("r4_metadata"):
+        return column["fqname"]
+    meta = column["r4_metadata"]
+    return (f"{column['fqname']} | term={meta['business_term']} | "
+            f"lineage={meta['lineage']} | access={meta['access_policy']}")
+
+
+def _columns_by_fqname(columns, fqnames):
+    by_name = {column["fqname"]: column for column in columns}
+    return [by_name[fqname] for fqname in fqnames]
+
+
 def route_ungoverned(columns, _key, _fp_rate, _fn_rate, _rng, **settings):
     started = time.perf_counter()
-    catalog = "\n".join(c["fqname"] for c in columns)
-    prompt = f"Here is the full data catalog ({len(columns)} columns):\n{catalog}\n\n{TASK}"
+    catalog = "\n".join(_catalog_line(c) for c in columns)
+    prompt = f"Here is the full data catalog ({len(columns)} columns):\n{catalog}\n\n{_task_for(columns)}"
     return _call_route(prompt, preparation_ms=(time.perf_counter() - started) * 1000, **settings)
 
 
@@ -318,7 +411,7 @@ def route_lexical(columns, _key, _fp_rate, _fn_rate, _rng, **settings):
     started = time.perf_counter()
     candidates = lexical_candidates(columns)
     prompt = (f"A cheap name-only lexical prefilter selected these {len(candidates)} columns "
-              f"as potentially Government-ID related:\n" + "\n".join(candidates) + f"\n\n{TASK}")
+              f"as potentially Government-ID related:\n" + "\n".join(candidates) + f"\n\n{_task_for(columns)}")
     return _call_route(prompt, preparation_ms=(time.perf_counter() - started) * 1000, **settings)
 
 
@@ -334,10 +427,13 @@ def governed_candidates(columns, key, fp_rate, fn_rate, rng):
     n_fn = min(int(round(len(gov) * fn_rate)), len(gov))
     omitted = set(rng.sample(gov, n_fn)) if n_fn else set()
     visible_gov = [fq for fq in gov if fq not in omitted]
-    def is_decoy(fqname):
-        field = fqname.split(".", 1)[1]
-        return field in DECOY_COLUMNS or any(field.startswith(f"{name}_") for name in DECOY_COLUMNS)
-    decoys = sorted(c["fqname"] for c in columns if not c["is_gov_id"] and is_decoy(c["fqname"]))
+    if _is_r4(columns):
+        decoys = sorted(c["fqname"] for c in columns if c.get("classifier_decoy") and c["fqname"] not in key)
+    else:
+        def is_decoy(fqname):
+            field = fqname.split(".", 1)[1]
+            return field in DECOY_COLUMNS or any(field.startswith(f"{name}_") for name in DECOY_COLUMNS)
+        decoys = sorted(c["fqname"] for c in columns if not c["is_gov_id"] and is_decoy(c["fqname"]))
     n_fp = min(int(round(len(gov) * fp_rate)), len(decoys))
     candidates = visible_gov + rng.sample(decoys, n_fp)
     rng.shuffle(candidates)
@@ -351,9 +447,10 @@ def route_governed(columns, key, fp_rate, fn_rate, rng, **settings):
     discriminate, so precision here is earned rather than assumed."""
     started = time.perf_counter()
     candidates = governed_candidates(columns, key, fp_rate, fn_rate, rng)
+    rendered = "\n".join(_catalog_line(c) for c in _columns_by_fqname(columns, candidates))
     prompt = (f"A governed metadata catalog classifier flagged these {len(candidates)} columns "
               f"as possibly Government-ID related (the classifier is imperfect — some are "
-              f"false positives):\n" + "\n".join(candidates) + f"\n\n{TASK}")
+              f"false positives):\n" + rendered + f"\n\n{_task_for(columns)}")
     return _call_route(prompt, preparation_ms=(time.perf_counter() - started) * 1000, **settings)
 
 
@@ -375,7 +472,7 @@ def randomized_routes(seed, classifier_fn_rate=0.0):
 
 
 def preflight_context(tiers, seed, classifier_fp_rate, classifier_fn_rate, context_window_tokens,
-                      max_tokens):
+                      max_tokens, scenario="r3-name-selection"):
     """Refuse R2 collection before a constructed route can exceed its declared context budget.
 
     The byte count is deliberately an upper bound rather than a provider usage value: a provider
@@ -384,24 +481,24 @@ def preflight_context(tiers, seed, classifier_fp_rate, classifier_fn_rate, conte
     """
     rows = []
     for tier in tiers:
-        columns, key = build_catalog(tier, seed)
+        columns, key = build_catalog_for_scenario(tier, seed, scenario)
         for name, route in ROUTES:
             rng = random.Random(f"{seed}:{name}:candidate-set")
             if name.startswith("ungoverned"):
                 prompt = f"Here is the full data catalog ({len(columns)} columns):\n" + \
-                         "\n".join(c["fqname"] for c in columns) + f"\n\n{TASK}"
+                         "\n".join(_catalog_line(c) for c in columns) + f"\n\n{_task_for(columns)}"
             elif name.startswith("lexical"):
                 candidates = lexical_candidates(columns)
                 prompt = (f"A cheap name-only lexical prefilter selected these {len(candidates)} columns "
-                          f"as potentially Government-ID related:\n" + "\n".join(candidates) + f"\n\n{TASK}")
+                          f"as potentially Government-ID related:\n" + "\n".join(candidates) + f"\n\n{_task_for(columns)}")
             else:
                 candidates = governed_candidates(columns, key, classifier_fp_rate, classifier_fn_rate, rng)
                 prompt = (f"A governed metadata catalog classifier flagged these {len(candidates)} columns "
                           f"as possibly Government-ID related (the classifier is imperfect — some are "
-                          f"false positives):\n" + "\n".join(candidates) + f"\n\n{TASK}")
+                          f"false positives):\n" + "\n".join(_catalog_line(c) for c in _columns_by_fqname(columns, candidates)) + f"\n\n{_task_for(columns)}")
             upper_bound = len(prompt.encode("utf-8"))
             rows.append({"tier": tier, "seed": seed, "route": name,
-                         "classifier_fn_rate": classifier_fn_rate,
+                         "classifier_fn_rate": classifier_fn_rate, "scenario": scenario,
                          "constructed_input_token_count": upper_bound,
                          "token_count_method": "utf8_byte_upper_bound",
                          "context_window_tokens": context_window_tokens,
@@ -518,6 +615,7 @@ def write_report(path, model, args, rows):
                    "classifier_fp_rate": args.classifier_fp_rate,
                    "classifier_fn_rate": args.classifier_fn_rate,
                    "classifier_fn_rates": getattr(args, "classifier_fn_rates", None) or [args.classifier_fn_rate],
+                   "scenario": getattr(args, "scenario", "r3-name-selection"),
                    "git_commit": _git_commit(), "package_versions": _package_versions(),
                    "created_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                    "data_is_synthetic": True, "calls_are_real": True,
@@ -569,6 +667,8 @@ def main():
                     help="enable the R2 fail-closed evidence schema and context preflight")
     ap.add_argument("--r3", action="store_true",
                     help="enable R3 multi-condition retained evidence; requires --r2 and --classifier-fn-rates 0 0.05 0.10")
+    ap.add_argument("--r4", action="store_true",
+                    help="enable R4 semantic/policy scenario; requires --r2 and the frozen R4 seed, tier, and sensitivity plan")
     ap.add_argument("--context-window-tokens", type=int,
                     help="declared runtime context budget; required with --r2")
     ap.add_argument("--max-completion-tokens", type=int, default=3000,
@@ -596,10 +696,18 @@ def main():
         die("every --classifier-fn-rates value must be between 0 and 1")
     if len(set(fn_rates)) != len(fn_rates):
         die("--classifier-fn-rates must not repeat a condition")
-    if args.r3 and not args.r2:
-        die("--r3 requires --r2")
+    if args.r3 and args.r4:
+        die("--r3 and --r4 are mutually exclusive frozen protocols")
+    if (args.r3 or args.r4) and not args.r2:
+        die("--r3/--r4 require --r2")
     if args.r3 and fn_rates != [0.0, 0.05, 0.1]:
         die("--r3 requires the frozen --classifier-fn-rates 0 0.05 0.10")
+    if args.r4 and fn_rates != [0.0, 0.05, 0.1]:
+        die("--r4 requires the frozen --classifier-fn-rates 0 0.05 0.10")
+    if args.r4 and (args.seed != 82 or args.replicates != 20 or args.tiers != [300, 800, 1200]):
+        die("--r4 requires frozen --tiers 300 800 1200 --seed 82 --replicates 20")
+    if args.r4 and args.classifier_fp_rate != 1.0:
+        die("--r4 requires frozen --classifier-fp-rate 1.0")
     if args.r2 and (not args.context_window_tokens or args.context_window_tokens <= 0):
         die("--r2 requires a positive --context-window-tokens")
     if args.r2 and not all((args.endpoint_class, args.model_digest, args.runtime_version, args.hardware)):
@@ -612,6 +720,7 @@ def main():
         die("--r2 requires --verify-ollama-context to confirm the live Ollama context setting")
     if args.max_completion_tokens <= 0:
         die("--max-completion-tokens must be positive")
+    args.scenario = "r4-semantic-access" if args.r4 else "r3-name-selection"
 
     global _TIMEOUT, _REQUEST_OPTIONS, _TOKEN_PARAM, _COMPLETION_CAP_PROBE
     if args.timeout is not None:
@@ -631,7 +740,7 @@ def main():
     if args.r2:
         preflight_rows = [preflight_context(args.tiers, args.seed, args.classifier_fp_rate,
                                             fn_rate, args.context_window_tokens,
-                                            args.max_completion_tokens)
+                                            args.max_completion_tokens, args.scenario)
                           for fn_rate in fn_rates]
         preflight = {"schema_version": "1.0", "artifact_type": "token-bleed-context-preflight",
                      "classifier_fn_rates": fn_rates,
@@ -668,7 +777,7 @@ def main():
         print(f"{C['B']}Tier: {n} objects{C['R']}")
         for rep in range(args.replicates):
             seed = args.seed + rep
-            columns, key = build_catalog(n, seed)
+            columns, key = build_catalog_for_scenario(n, seed, args.scenario)
             all_fq = [c["fqname"] for c in columns]
             for fn_rate in fn_rates:
                 tag = (f"  {C['DIM']}[seed {seed}, classifier-fn {fn_rate:g}] {len(columns)} cols, "
@@ -688,7 +797,7 @@ def main():
                     print(f"    {col}{name:<32}{C['R']} prompt={r['prompt_tokens']:>7,} total={r['total_tokens']:>7,}  F1={sc['f1']:.3f}  "
                           f"{C['DIM']}(P={sc['precision']} R={sc['recall']}){C['R']}")
                     rows.append({"tier": n, "seed": seed, "route": name,
-                             "classifier_fn_rate": fn_rate,
+                             "classifier_fn_rate": fn_rate, "scenario": args.scenario,
                              "catalog_columns": len(columns), "answer_key_count": len(key),
                              "route_position": position, "route_order": route_order,
                              "requested_model": model, "returned_model": r["returned_model"],

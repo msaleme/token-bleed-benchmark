@@ -22,6 +22,7 @@ ROUTE_UNGOVERNED = "ungoverned (context-stuffing)"
 ROUTE_LEXICAL = "lexical prefilter (cheap baseline)"
 ROUTE_GOVERNED = "governed (metadata layer)"
 TIER_SPLITS = {300: "development", 1500: "validation", 3000: "holdout"}
+R4_TIER_SPLITS = {300: "development", 800: "validation", 1200: "holdout"}
 EPSILON_MS = 0.001
 
 
@@ -69,8 +70,9 @@ def _r2_row_error(row: dict, route: str) -> str | None:
     return None
 
 
-def _r3_pairs(rows: list[dict], left: str, right: str, fn_rate: float, tiers: set[int]) -> tuple[dict, list[str]]:
-    """Return complete seed-matched R3 route pairs, never silently dropping a missing row."""
+def _r3_pairs(rows: list[dict], left: str, right: str, fn_rate: float, tiers: set[int],
+              seed_start: int = 62) -> tuple[dict, list[str]]:
+    """Return complete seed-matched route pairs, never silently dropping a missing row."""
     indexed: dict[tuple[int, int], dict[str, dict]] = {}
     for row in rows:
         if row.get("route") not in {left, right} or row.get("tier") not in tiers:
@@ -78,7 +80,7 @@ def _r3_pairs(rows: list[dict], left: str, right: str, fn_rate: float, tiers: se
         if row.get("classifier_fn_rate") != fn_rate:
             continue
         indexed.setdefault((int(row["tier"]), int(row["seed"])), {})[row["route"]] = row
-    expected = {(tier, seed) for tier in tiers for seed in range(62, 82)}
+    expected = {(tier, seed) for tier in tiers for seed in range(seed_start, seed_start + 20)}
     failures, pairs = [], {}
     for key in sorted(expected):
         routes = indexed.get(key, {})
@@ -146,6 +148,64 @@ def _r3_claims(rows: list[dict]) -> dict:
             "governed_sensitivity_vs_lexical": {"verdict": sensitivity_verdict, "conditions": sensitivity}}
 
 
+def _r4_claims(rows: list[dict]) -> dict:
+    """Assess R4's new semantic-access scenario without borrowing R3's evidence."""
+    required = {"r4-semantic-access"}
+    if {row.get("scenario") for row in rows} != required:
+        reason = "report lacks the frozen R4 semantic-access scenario"
+        return {name: {"verdict": "INCONCLUSIVE", "reason": reason} for name in (
+            "selective_context_cost_vs_full", "governed_quality_vs_full",
+            "governed_value_vs_lexical", "governed_sensitivity_vs_lexical")}
+
+    def verdict(pairs, failures, rule):
+        if failures:
+            return {"verdict": "INCONCLUSIVE", "reason": "retained evidence is incomplete", "failures": failures}
+        checks = rule(pairs)
+        return {"verdict": "ACCEPTED" if all(check["passed"] for check in checks) else "REJECTED", "checks": checks}
+
+    def cost_rule(pairs):
+        checks = []
+        for tier in (300, 800, 1200):
+            reductions = [1 - pair[ROUTE_GOVERNED]["prompt_tokens"] / pair[ROUTE_UNGOVERNED]["prompt_tokens"]
+                          for (observed_tier, _), pair in pairs.items() if observed_tier == tier]
+            checks.append({"tier": tier, "metric": "mean_prompt_token_reduction", "actual": _mean(reductions),
+                           "required": 0.5, "passed": _mean(reductions) >= 0.5})
+        return checks
+
+    def quality_rule(pairs):
+        checks = []
+        for tier in (800, 1200):
+            differences = [pair[ROUTE_GOVERNED]["f1"] - pair[ROUTE_UNGOVERNED]["f1"]
+                           for (observed_tier, _), pair in pairs.items() if observed_tier == tier]
+            ci = paired_bootstrap_percentile_ci(differences, statistic="mean(governed_f1 - ungoverned_f1)")
+            checks.append({"tier": tier, "metric": "paired_f1_difference_ci", "confidence_interval": ci["interval"],
+                           "required_lower_bound": -0.02, "passed": ci["interval"][0] >= -0.02})
+        return checks
+
+    def lexical_rule(pairs):
+        differences = [pair[ROUTE_GOVERNED]["f1"] - pair[ROUTE_LEXICAL]["f1"] for pair in pairs.values()]
+        ratios = [pair[ROUTE_GOVERNED]["prompt_tokens"] / pair[ROUTE_LEXICAL]["prompt_tokens"] for pair in pairs.values()]
+        ci = paired_bootstrap_percentile_ci(differences, statistic="mean(governed_f1 - lexical_f1)")
+        return [{"tier": 1200, "metric": "paired_f1_difference_ci", "confidence_interval": ci["interval"],
+                 "required_lower_bound": 0.0, "passed": ci["interval"][0] > 0.0},
+                {"tier": 1200, "metric": "mean_prompt_token_ratio", "actual": _mean(ratios),
+                 "maximum": 3.0, "passed": _mean(ratios) <= 3.0}]
+
+    cost_pairs, cost_failures = _r3_pairs(rows, ROUTE_UNGOVERNED, ROUTE_GOVERNED, 0.0, {300, 800, 1200}, 82)
+    quality_pairs, quality_failures = _r3_pairs(rows, ROUTE_UNGOVERNED, ROUTE_GOVERNED, 0.0, {800, 1200}, 82)
+    lexical_pairs, lexical_failures = _r3_pairs(rows, ROUTE_LEXICAL, ROUTE_GOVERNED, 0.0, {1200}, 82)
+    sensitivity = {}
+    for rate in (0.05, 0.10):
+        pairs, failures = _r3_pairs(rows, ROUTE_LEXICAL, ROUTE_GOVERNED, rate, {1200}, 82)
+        sensitivity[str(rate)] = verdict(pairs, failures, lexical_rule)
+    sensitivity_verdict = ("INCONCLUSIVE" if any(item["verdict"] == "INCONCLUSIVE" for item in sensitivity.values())
+                           else "ACCEPTED" if all(item["verdict"] == "ACCEPTED" for item in sensitivity.values()) else "REJECTED")
+    return {"selective_context_cost_vs_full": verdict(cost_pairs, cost_failures, cost_rule),
+            "governed_quality_vs_full": verdict(quality_pairs, quality_failures, quality_rule),
+            "governed_value_vs_lexical": verdict(lexical_pairs, lexical_failures, lexical_rule),
+            "governed_sensitivity_vs_lexical": {"verdict": sensitivity_verdict, "conditions": sensitivity}}
+
+
 def convert(report_path: Path, contract_path: Path) -> dict:
     report = json.loads(report_path.read_text(encoding="utf-8"))
     rows = report.get("results")
@@ -158,15 +218,17 @@ def convert(report_path: Path, contract_path: Path) -> dict:
     provenance_error = _r2_provenance_error(report) if is_r2 else None
 
     is_r3 = contract_path.stem == "token-bleed-mac-r3"
+    is_r4 = contract_path.stem == "token-bleed-mac-r4"
+    tier_splits = R4_TIER_SPLITS if is_r4 else TIER_SPLITS
     paired: dict[tuple[int, int], dict[str, dict]] = {}
     for row in rows:
         try:
             tier, seed, route = int(row["tier"]), int(row["seed"]), row["route"]
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("each report row needs integer tier/seed and route") from exc
-        if is_r3 and row.get("classifier_fn_rate") != 0.0:
+        if (is_r3 or is_r4) and row.get("classifier_fn_rate") != 0.0:
             continue
-        if tier in TIER_SPLITS and route in {ROUTE_UNGOVERNED, ROUTE_GOVERNED}:
+        if tier in tier_splits and route in {ROUTE_UNGOVERNED, ROUTE_GOVERNED}:
             paired.setdefault((tier, seed), {})[route] = row
 
     trials, baseline_values = [], []
@@ -174,7 +236,7 @@ def convert(report_path: Path, contract_path: Path) -> dict:
     for (tier, seed), routes in sorted(paired.items()):
         baseline, governed = routes.get(ROUTE_UNGOVERNED), routes.get(ROUTE_GOVERNED)
         trial = {"trial_id": f"tier-{tier}-seed-{seed}", "seed": seed,
-                 "split": TIER_SPLITS[tier], "success": bool(baseline and governed),
+                 "split": tier_splits[tier], "success": bool(baseline and governed),
                  "metrics": {}, "metric_sources": {}}
         if not trial["success"]:
             trial["error_message"] = "retained report is missing an ungoverned or governed route row"
@@ -244,6 +306,11 @@ def convert(report_path: Path, contract_path: Path) -> dict:
         evidence["claim_scoped_verdicts"] = _r3_claims(rows)
         evidence["adapter_notes"].append(
             "R3 claim-scoped verdicts are separate from the generic ACE verdict; each claim is assessed only against its declared comparator and condition."
+        )
+    if is_r4:
+        evidence["claim_scoped_verdicts"] = _r4_claims(rows)
+        evidence["adapter_notes"].append(
+            "R4 claim-scoped verdicts require the frozen semantic-access scenario and are separate from the generic ACE verdict."
         )
     return evidence
 

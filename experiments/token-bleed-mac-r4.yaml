@@ -1,0 +1,50 @@
+experiment_id: token-bleed-mac-r4
+baseline: ungoverned-context-stuffing
+mutation_scope: [synthetic-opaque-schema, governed-metadata-selection, access-policy-selection, named-mac-local-endpoint]
+trials: 20
+quality_floor: {metric: f1, minimum_relative_to_baseline: 0.98}
+benchmark_sets:
+  development: [semantic-access-catalog-300]
+  validation: [semantic-access-catalog-800]
+  holdout: [semantic-access-catalog-1200]
+acceptance:
+  minimum_ecd_improvement: 0.5
+  require_statistical_significance: true
+  confidence_interval_excludes_zero: true
+  require_validation_transfer: true
+  require_holdout_pass: true
+reporting: {report_format: [json, markdown]}
+trial_configuration:
+  scenario: r4-semantic-access
+  seeds: [82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101]
+  classifier_false_negative_rates: [0.0, 0.05, 0.10]
+  classifier_false_positive_rate: 1.0
+  retained_route_rows_per_split: 180
+  route_order: independently-randomized-per-seed-and-false-negative-rate
+execution:
+  per_call_timeout_seconds: 1800
+  requested_completion_tokens: 3000
+  local_ollama_context_verification: required
+  completion_cap_enforcement: required
+  completion_cap_parameter: max_tokens
+telemetry_provenance: measured
+claim_scopes:
+  selective_context_cost_vs_full:
+    comparison: governed-vs-ungoverned
+    classifier_false_negative_rate: 0.0
+    required_mean_prompt_token_reduction: 0.5
+    required_splits: [development, validation, holdout]
+  governed_quality_vs_full:
+    comparison: governed-vs-ungoverned
+    classifier_false_negative_rate: 0.0
+    minimum_paired_f1_ci_lower_bound: -0.02
+    required_splits: [validation, holdout]
+  governed_value_vs_lexical:
+    comparison: governed-vs-lexical
+    classifier_false_negative_rate: 0.0
+    require_holdout_f1_ci_excludes_zero_in_favor: true
+    maximum_mean_prompt_tokens_relative_to_lexical: 3.0
+  governed_sensitivity_vs_lexical:
+    comparison: governed-vs-lexical
+    classifier_false_negative_rates: [0.05, 0.10]
+    require_same_quality_and_token_rules_as_governed_value_vs_lexical: true

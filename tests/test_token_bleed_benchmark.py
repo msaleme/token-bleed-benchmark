@@ -56,6 +56,23 @@ class GovernedCandidateTests(unittest.TestCase):
         ]
         self.assertEqual(benchmark.lexical_candidates(columns), ["A.SSN_1"])
 
+    def test_r4_opaque_schema_has_no_lexical_government_id_shortcut(self):
+        columns, key = benchmark.build_r4_catalog(300, 82)
+        self.assertTrue(key)
+        self.assertEqual(benchmark.lexical_candidates(columns), [])
+        self.assertTrue(all("r4_metadata" in column for column in columns))
+        # The answer key is policy-aware: restricted Government-ID fields are present but excluded.
+        restricted_gov = [column for column in columns if column["is_gov_id"] and
+                          column["r4_metadata"]["access_policy"] == "restricted"]
+        self.assertTrue(restricted_gov)
+        self.assertTrue(all(column["fqname"] not in key for column in restricted_gov))
+
+    def test_r4_preflight_retains_semantic_access_scenario(self):
+        result = benchmark.preflight_context([1200], 82, 1.0, 0.0, 131072, 3000,
+                                             "r4-semantic-access")
+        self.assertTrue(result["passed"])
+        self.assertEqual({row["scenario"] for row in result["rows"]}, {"r4-semantic-access"})
+
     def test_route_order_is_seeded_and_preserves_every_route(self):
         first = [name for name, _ in benchmark.randomized_routes(42)]
         again = [name for name, _ in benchmark.randomized_routes(42)]
