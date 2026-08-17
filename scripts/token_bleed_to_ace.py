@@ -148,11 +148,11 @@ def _r3_claims(rows: list[dict]) -> dict:
             "governed_sensitivity_vs_lexical": {"verdict": sensitivity_verdict, "conditions": sensitivity}}
 
 
-def _r4_claims(rows: list[dict]) -> dict:
-    """Assess R4's new semantic-access scenario without borrowing R3's evidence."""
-    required = {"r4-semantic-access"}
+def _r4_claims(rows: list[dict], *, scenario: str = "r4-semantic-access", seed_start: int = 82) -> dict:
+    """Assess the frozen semantic-access scenario without borrowing R3's evidence."""
+    required = {scenario}
     if {row.get("scenario") for row in rows} != required:
-        reason = "report lacks the frozen R4 semantic-access scenario"
+        reason = f"report lacks the frozen {scenario} scenario"
         return {name: {"verdict": "INCONCLUSIVE", "reason": reason} for name in (
             "selective_context_cost_vs_full", "governed_quality_vs_full",
             "governed_value_vs_lexical", "governed_sensitivity_vs_lexical")}
@@ -191,12 +191,12 @@ def _r4_claims(rows: list[dict]) -> dict:
                 {"tier": 1200, "metric": "mean_prompt_token_ratio", "actual": _mean(ratios),
                  "maximum": 3.0, "passed": _mean(ratios) <= 3.0}]
 
-    cost_pairs, cost_failures = _r3_pairs(rows, ROUTE_UNGOVERNED, ROUTE_GOVERNED, 0.0, {300, 800, 1200}, 82)
-    quality_pairs, quality_failures = _r3_pairs(rows, ROUTE_UNGOVERNED, ROUTE_GOVERNED, 0.0, {800, 1200}, 82)
-    lexical_pairs, lexical_failures = _r3_pairs(rows, ROUTE_LEXICAL, ROUTE_GOVERNED, 0.0, {1200}, 82)
+    cost_pairs, cost_failures = _r3_pairs(rows, ROUTE_UNGOVERNED, ROUTE_GOVERNED, 0.0, {300, 800, 1200}, seed_start)
+    quality_pairs, quality_failures = _r3_pairs(rows, ROUTE_UNGOVERNED, ROUTE_GOVERNED, 0.0, {800, 1200}, seed_start)
+    lexical_pairs, lexical_failures = _r3_pairs(rows, ROUTE_LEXICAL, ROUTE_GOVERNED, 0.0, {1200}, seed_start)
     sensitivity = {}
     for rate in (0.05, 0.10):
-        pairs, failures = _r3_pairs(rows, ROUTE_LEXICAL, ROUTE_GOVERNED, rate, {1200}, 82)
+        pairs, failures = _r3_pairs(rows, ROUTE_LEXICAL, ROUTE_GOVERNED, rate, {1200}, seed_start)
         sensitivity[str(rate)] = verdict(pairs, failures, lexical_rule)
     sensitivity_verdict = ("INCONCLUSIVE" if any(item["verdict"] == "INCONCLUSIVE" for item in sensitivity.values())
                            else "ACCEPTED" if all(item["verdict"] == "ACCEPTED" for item in sensitivity.values()) else "REJECTED")
@@ -219,14 +219,15 @@ def convert(report_path: Path, contract_path: Path) -> dict:
 
     is_r3 = contract_path.stem == "token-bleed-mac-r3"
     is_r4 = contract_path.stem == "token-bleed-mac-r4"
-    tier_splits = R4_TIER_SPLITS if is_r4 else TIER_SPLITS
+    is_r5 = contract_path.stem == "token-bleed-mac-r5"
+    tier_splits = R4_TIER_SPLITS if (is_r4 or is_r5) else TIER_SPLITS
     paired: dict[tuple[int, int], dict[str, dict]] = {}
     for row in rows:
         try:
             tier, seed, route = int(row["tier"]), int(row["seed"]), row["route"]
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("each report row needs integer tier/seed and route") from exc
-        if (is_r3 or is_r4) and row.get("classifier_fn_rate") != 0.0:
+        if (is_r3 or is_r4 or is_r5) and row.get("classifier_fn_rate") != 0.0:
             continue
         if tier in tier_splits and route in {ROUTE_UNGOVERNED, ROUTE_GOVERNED}:
             paired.setdefault((tier, seed), {})[route] = row
@@ -311,6 +312,13 @@ def convert(report_path: Path, contract_path: Path) -> dict:
         evidence["claim_scoped_verdicts"] = _r4_claims(rows)
         evidence["adapter_notes"].append(
             "R4 claim-scoped verdicts require the frozen semantic-access scenario and are separate from the generic ACE verdict."
+        )
+    if is_r5:
+        evidence["claim_scoped_verdicts"] = _r4_claims(
+            rows, scenario="r5-compact-semantic-access", seed_start=102
+        )
+        evidence["adapter_notes"].append(
+            "R5 claim-scoped verdicts require the frozen compact semantic-access scenario and are separate from the generic ACE verdict."
         )
     return evidence
 

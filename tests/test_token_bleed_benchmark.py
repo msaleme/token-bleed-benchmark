@@ -73,6 +73,30 @@ class GovernedCandidateTests(unittest.TestCase):
         self.assertTrue(result["passed"])
         self.assertEqual({row["scenario"] for row in result["rows"]}, {"r4-semantic-access"})
 
+    def test_r5_compact_metadata_uses_codes_without_exposing_the_answer_key(self):
+        column = {
+            "fqname": "TABLE.PERSON_REF_1",
+            "r5_compact": True,
+            "r4_metadata": {
+                "business_term": "government-issued identity number",
+                "lineage": "identity-vault",
+                "access_policy": "approved",
+            },
+        }
+        self.assertEqual(benchmark._catalog_line(column, compact=True), "TABLE.PERSON_REF_1|t=GID|l=IDV|p=A")
+
+    def test_r5_all_seed_preflight_covers_every_seed_and_condition(self):
+        columns = [{"fqname": "TABLE.FIELD", "is_gov_id": False}]
+        with mock.patch.object(benchmark, "build_catalog_for_scenario", return_value=(columns, set())):
+            result = benchmark.preflight_context_for_seeds(
+                [300], [102, 103], 1.0, [0.0, 0.1], 10000, 1024,
+                "r5-compact-semantic-access",
+            )
+        self.assertTrue(result["passed"])
+        self.assertEqual(len(result["rows"]), 12)
+        self.assertEqual({row["seed"] for row in result["rows"]}, {102, 103})
+        self.assertEqual({row["classifier_fn_rate"] for row in result["rows"]}, {0.0, 0.1})
+
     def test_route_order_is_seeded_and_preserves_every_route(self):
         first = [name for name, _ in benchmark.randomized_routes(42)]
         again = [name for name, _ in benchmark.randomized_routes(42)]

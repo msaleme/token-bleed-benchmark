@@ -80,6 +80,27 @@ R4_DECOY_METADATA = [
     ("bank account reference", "payments", "approved"),
     ("document type code", "document-store", "approved"),
 ]
+R5_TERM_CODES = {
+    "government-issued identity number": "GID",
+    "taxpayer identifier": "TAX",
+    "driver license reference": "DL",
+    "bank account reference": "ACCT",
+    "document type code": "DOC",
+    "operational attribute": "OPS",
+}
+R5_LINEAGE_CODES = {
+    "identity-vault": "IDV",
+    "tax-service": "TAX",
+    "licensing": "LIC",
+    "payments": "PAY",
+    "document-store": "DOC",
+    "business-system": "OPS",
+}
+R5_TASK = ("For a regulated identity-verification report, list ONLY the fully-qualified COLUMN "
+           "names that represent a government-issued identity number AND are approved for analyst "
+           "use. Return one exact TABLE.COLUMN name per line. In compact metadata, t=GID means "
+           "government-issued identity number, l=IDV means identity-vault lineage, and p=A means "
+           "approved; p=R means restricted. Do not include restricted fields or other terms.")
 
 # A line that negates is not an answer. Models routinely restate the exclusion list.
 NEGATION = re.compile(
@@ -228,8 +249,25 @@ def build_r4_catalog(n_objects, seed, gov_id_rate=0.02, decoy_rate=0.08):
     return columns, answer_key
 
 
+def build_r5_catalog(n_objects, seed, gov_id_rate=0.02, decoy_rate=0.08):
+    """Build R5's fresh-seed semantic task with a compact governed representation.
+
+    The underlying synthetic catalog and policy-aware answer key are unchanged from R4.
+    Only the governed route's wire representation is compacted.  This makes a new, explicit
+    hypothesis test rather than retroactively changing R4's cost ceiling.
+    """
+    columns, answer_key = build_r4_catalog(n_objects, seed, gov_id_rate, decoy_rate)
+    for column in columns:
+        column["r5_compact"] = True
+    return columns, answer_key
+
+
 def build_catalog_for_scenario(n_objects, seed, scenario):
-    return build_r4_catalog(n_objects, seed) if scenario == "r4-semantic-access" else build_catalog(n_objects, seed)
+    if scenario == "r4-semantic-access":
+        return build_r4_catalog(n_objects, seed)
+    if scenario == "r5-compact-semantic-access":
+        return build_r5_catalog(n_objects, seed)
+    return build_catalog(n_objects, seed)
 
 
 def _post(payload, base, key, timeout=None):
@@ -367,19 +405,29 @@ def _call_route(prompt, *, preparation_ms=0, context_window_tokens=None, max_tok
     return result
 
 
-def _is_r4(columns):
+def _is_semantic(columns):
     return bool(columns and "r4_metadata" in columns[0])
 
 
+def _is_r5(columns):
+    return bool(columns and columns[0].get("r5_compact") is True)
+
+
 def _task_for(columns):
-    return R4_TASK if _is_r4(columns) else TASK
+    if _is_r5(columns):
+        return R5_TASK
+    return R4_TASK if _is_semantic(columns) else TASK
 
 
-def _catalog_line(column):
+def _catalog_line(column, *, compact=False):
     """Render the context supplied to a route without ever exposing the answer key."""
     if not column.get("r4_metadata"):
         return column["fqname"]
     meta = column["r4_metadata"]
+    if compact and column.get("r5_compact"):
+        return (f"{column['fqname']}|t={R5_TERM_CODES[meta['business_term']]}|"
+                f"l={R5_LINEAGE_CODES[meta['lineage']]}|"
+                f"p={'A' if meta['access_policy'] == 'approved' else 'R'}")
     return (f"{column['fqname']} | term={meta['business_term']} | "
             f"lineage={meta['lineage']} | access={meta['access_policy']}")
 
@@ -427,7 +475,7 @@ def governed_candidates(columns, key, fp_rate, fn_rate, rng):
     n_fn = min(int(round(len(gov) * fn_rate)), len(gov))
     omitted = set(rng.sample(gov, n_fn)) if n_fn else set()
     visible_gov = [fq for fq in gov if fq not in omitted]
-    if _is_r4(columns):
+    if _is_semantic(columns):
         decoys = sorted(c["fqname"] for c in columns if c.get("classifier_decoy") and c["fqname"] not in key)
     else:
         def is_decoy(fqname):
@@ -447,7 +495,8 @@ def route_governed(columns, key, fp_rate, fn_rate, rng, **settings):
     discriminate, so precision here is earned rather than assumed."""
     started = time.perf_counter()
     candidates = governed_candidates(columns, key, fp_rate, fn_rate, rng)
-    rendered = "\n".join(_catalog_line(c) for c in _columns_by_fqname(columns, candidates))
+    rendered = "\n".join(_catalog_line(c, compact=_is_r5(columns))
+                         for c in _columns_by_fqname(columns, candidates))
     prompt = (f"A governed metadata catalog classifier flagged these {len(candidates)} columns "
               f"as possibly Government-ID related (the classifier is imperfect — some are "
               f"false positives):\n" + rendered + f"\n\n{_task_for(columns)}")
@@ -495,7 +544,8 @@ def preflight_context(tiers, seed, classifier_fp_rate, classifier_fn_rate, conte
                 candidates = governed_candidates(columns, key, classifier_fp_rate, classifier_fn_rate, rng)
                 prompt = (f"A governed metadata catalog classifier flagged these {len(candidates)} columns "
                           f"as possibly Government-ID related (the classifier is imperfect — some are "
-                          f"false positives):\n" + "\n".join(_catalog_line(c) for c in _columns_by_fqname(columns, candidates)) + f"\n\n{_task_for(columns)}")
+                          f"false positives):\n" + "\n".join(_catalog_line(c, compact=_is_r5(columns))
+                                                                    for c in _columns_by_fqname(columns, candidates)) + f"\n\n{_task_for(columns)}")
             upper_bound = len(prompt.encode("utf-8"))
             rows.append({"tier": tier, "seed": seed, "route": name,
                          "classifier_fn_rate": classifier_fn_rate, "scenario": scenario,
@@ -507,6 +557,18 @@ def preflight_context(tiers, seed, classifier_fp_rate, classifier_fn_rate, conte
     failures = [row for row in rows if not row["fits_context_budget"]]
     return {"schema_version": "1.0", "artifact_type": "token-bleed-context-preflight",
             "rows": rows, "passed": not failures, "failures": failures}
+
+
+def preflight_context_for_seeds(tiers, seeds, classifier_fp_rate, classifier_fn_rates,
+                                context_window_tokens, max_tokens, scenario):
+    """Preflight every frozen seed and sensitivity condition before R5 makes a model call."""
+    results = [preflight_context(tiers, seed, classifier_fp_rate, fn_rate,
+                                 context_window_tokens, max_tokens, scenario)
+               for seed in seeds for fn_rate in classifier_fn_rates]
+    rows = [row for result in results for row in result["rows"]]
+    failures = [row for result in results for row in result["failures"]]
+    return {"schema_version": "1.0", "artifact_type": "token-bleed-context-preflight",
+            "rows": rows, "failures": failures, "passed": not failures}
 
 
 def verify_ollama_runtime_context(required_context_tokens):
@@ -669,6 +731,8 @@ def main():
                     help="enable R3 multi-condition retained evidence; requires --r2 and --classifier-fn-rates 0 0.05 0.10")
     ap.add_argument("--r4", action="store_true",
                     help="enable R4 semantic/policy scenario; requires --r2 and the frozen R4 seed, tier, and sensitivity plan")
+    ap.add_argument("--r5", action="store_true",
+                    help="enable R5 compact-governed semantic scenario; preflights every frozen seed before any model call")
     ap.add_argument("--context-window-tokens", type=int,
                     help="declared runtime context budget; required with --r2")
     ap.add_argument("--max-completion-tokens", type=int, default=3000,
@@ -696,10 +760,10 @@ def main():
         die("every --classifier-fn-rates value must be between 0 and 1")
     if len(set(fn_rates)) != len(fn_rates):
         die("--classifier-fn-rates must not repeat a condition")
-    if args.r3 and args.r4:
-        die("--r3 and --r4 are mutually exclusive frozen protocols")
-    if (args.r3 or args.r4) and not args.r2:
-        die("--r3/--r4 require --r2")
+    if sum(bool(value) for value in (args.r3, args.r4, args.r5)) > 1:
+        die("--r3, --r4, and --r5 are mutually exclusive frozen protocols")
+    if (args.r3 or args.r4 or args.r5) and not args.r2:
+        die("--r3/--r4/--r5 require --r2")
     if args.r3 and fn_rates != [0.0, 0.05, 0.1]:
         die("--r3 requires the frozen --classifier-fn-rates 0 0.05 0.10")
     if args.r4 and fn_rates != [0.0, 0.05, 0.1]:
@@ -708,6 +772,14 @@ def main():
         die("--r4 requires frozen --tiers 300 800 1200 --seed 82 --replicates 20")
     if args.r4 and args.classifier_fp_rate != 1.0:
         die("--r4 requires frozen --classifier-fp-rate 1.0")
+    if args.r5 and fn_rates != [0.0, 0.05, 0.1]:
+        die("--r5 requires the frozen --classifier-fn-rates 0 0.05 0.10")
+    if args.r5 and (args.seed != 102 or args.replicates != 20 or args.tiers != [300, 800, 1200]):
+        die("--r5 requires frozen --tiers 300 800 1200 --seed 102 --replicates 20")
+    if args.r5 and args.classifier_fp_rate != 1.0:
+        die("--r5 requires frozen --classifier-fp-rate 1.0")
+    if args.r5 and args.max_completion_tokens != 1024:
+        die("--r5 requires frozen --max-completion-tokens 1024")
     if args.r2 and (not args.context_window_tokens or args.context_window_tokens <= 0):
         die("--r2 requires a positive --context-window-tokens")
     if args.r2 and not all((args.endpoint_class, args.model_digest, args.runtime_version, args.hardware)):
@@ -720,7 +792,8 @@ def main():
         die("--r2 requires --verify-ollama-context to confirm the live Ollama context setting")
     if args.max_completion_tokens <= 0:
         die("--max-completion-tokens must be positive")
-    args.scenario = "r4-semantic-access" if args.r4 else "r3-name-selection"
+    args.scenario = ("r5-compact-semantic-access" if args.r5 else
+                     "r4-semantic-access" if args.r4 else "r3-name-selection")
 
     global _TIMEOUT, _REQUEST_OPTIONS, _TOKEN_PARAM, _COMPLETION_CAP_PROBE
     if args.timeout is not None:
@@ -738,15 +811,20 @@ def main():
               f"{C['R']}\n", file=sys.stderr)
 
     if args.r2:
-        preflight_rows = [preflight_context(args.tiers, args.seed, args.classifier_fp_rate,
-                                            fn_rate, args.context_window_tokens,
-                                            args.max_completion_tokens, args.scenario)
-                          for fn_rate in fn_rates]
-        preflight = {"schema_version": "1.0", "artifact_type": "token-bleed-context-preflight",
-                     "classifier_fn_rates": fn_rates,
-                     "rows": [row for result in preflight_rows for row in result["rows"]],
-                     "failures": [row for result in preflight_rows for row in result["failures"]]}
-        preflight["passed"] = not preflight["failures"]
+        if args.r5:
+            preflight = preflight_context_for_seeds(
+                args.tiers, range(args.seed, args.seed + args.replicates), args.classifier_fp_rate,
+                fn_rates, args.context_window_tokens, args.max_completion_tokens, args.scenario)
+        else:
+            preflight_rows = [preflight_context(args.tiers, args.seed, args.classifier_fp_rate,
+                                                fn_rate, args.context_window_tokens,
+                                                args.max_completion_tokens, args.scenario)
+                              for fn_rate in fn_rates]
+            preflight = {"schema_version": "1.0", "artifact_type": "token-bleed-context-preflight",
+                         "rows": [row for result in preflight_rows for row in result["rows"]],
+                         "failures": [row for result in preflight_rows for row in result["failures"]]}
+            preflight["passed"] = not preflight["failures"]
+        preflight["classifier_fn_rates"] = fn_rates
         if not preflight["passed"]:
             if args.preflight_out:
                 with open(args.preflight_out, "w") as fh:
