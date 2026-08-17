@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: "If you use this benchmark or its retained R5 result, please cite it as below."
+title: "Token-Bleed Benchmark"
+abstract: "A reproducible synthetic benchmark for comparing raw full-context stuffing, lexical prefiltering, and compact governed context selection."
+authors:
+  - family-names: "Saleme"
+    given-names: "Michael K."
+    orcid: "https://orcid.org/0009-0003-6736-1900"
+repository-code: "https://github.com/msaleme/token-bleed-benchmark"
+license: "MIT"
+date-released: "2026-08-17"
+version: "r5-results-2026-08-17"
