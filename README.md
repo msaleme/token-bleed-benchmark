@@ -7,6 +7,9 @@
 The conclusive R5 record is available in [`docs/R5_RESULTS.md`](docs/R5_RESULTS.md) and as the
 immutable [`r5-results-2026-08-17` release](https://github.com/msaleme/token-bleed-benchmark/releases/tag/r5-results-2026-08-17).
 
+Verify the privacy-safe public packet from a clean checkout with
+[`docs/VERIFY_R5.md`](docs/VERIFY_R5.md).
+
 On its frozen local configuration, compact governed selection used **96.9% to 97.9% fewer prompt
 tokens** and achieved higher F1 than raw full-context stuffing. It did **not** clear the separately
 preregistered 3x prompt-token ceiling against the cheap lexical baseline. The public result packet
