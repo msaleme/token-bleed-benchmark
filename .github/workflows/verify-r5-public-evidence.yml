@@ -1,0 +1,28 @@
+name: Verify R5 public evidence
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "evidence/token-bleed-mac-r5/**"
+      - "experiments/token-bleed-mac-r5.yaml"
+      - "scripts/verify_r5_public_evidence.py"
+      - ".github/workflows/verify-r5-public-evidence.yml"
+  pull_request:
+    paths:
+      - "evidence/token-bleed-mac-r5/**"
+      - "experiments/token-bleed-mac-r5.yaml"
+      - "scripts/verify_r5_public_evidence.py"
+      - ".github/workflows/verify-r5-public-evidence.yml"
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ace-experiment-framework==0.1.2
+      - run: python3 scripts/verify_r5_public_evidence.py
