@@ -12,6 +12,32 @@ SPEC.loader.exec_module(adapter)
 
 
 class TokenBleedToAceTests(unittest.TestCase):
+    def test_r5_compact_semantic_evidence_uses_new_seeds_and_claims(self):
+        rows = []
+        for tier in (300, 800, 1200):
+            for seed in range(102, 122):
+                for rate in (0.0, 0.05, 0.1):
+                    for route, prompt, f1 in ((adapter.ROUTE_UNGOVERNED, 100, 0.4),
+                                              (adapter.ROUTE_LEXICAL, 20, 0.1),
+                                              (adapter.ROUTE_GOVERNED, 40, 0.8)):
+                        rows.append({"tier": tier, "seed": seed, "route": route, "classifier_fn_rate": rate,
+                                     "scenario": "r5-compact-semantic-access", "success": True,
+                                     "attempts": [{"attempt": 1, "outcome": "success"}], "prompt_tokens": prompt,
+                                     "completion_tokens": 10, "token_parameter": "max_tokens", "f1": f1,
+                                     "route_preparation_ms": 1.0, "prompt_truncated_by_context": False,
+                                     "context_window_tokens": 10000, "constructed_input_token_count": 500,
+                                     "requested_completion_tokens": 1024, "completion_cap_enforced": True,
+                                     "completion_cap_parameter": "max_tokens"})
+        with tempfile.TemporaryDirectory() as tmp:
+            report, contract = Path(tmp) / "report.json", Path(tmp) / "token-bleed-mac-r5.yaml"
+            report.write_text(json.dumps({"schema_version": "2.0", "git_commit": "abc123", "results": rows,
+                "r2_provenance": {"endpoint_class": "local", "model_digest": "sha256:x", "runtime_version": "test", "hardware": "test"},
+                "r2_execution": {"completion_cap_enforced": True, "completion_cap_parameter": "max_tokens"}}))
+            contract.write_text("experiment_id: token-bleed-mac-r5\n")
+            evidence = adapter.convert(report, contract)
+        self.assertEqual({trial["split"] for trial in evidence["trials"]}, {"development", "validation", "holdout"})
+        self.assertEqual(evidence["claim_scoped_verdicts"]["governed_value_vs_lexical"]["verdict"], "ACCEPTED")
+
     def test_r4_semantic_access_evidence_uses_r4_splits_and_claims(self):
         rows = []
         for tier in (300, 800, 1200):

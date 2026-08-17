@@ -92,6 +92,11 @@ R4 is a preregistered boundary test, not a rerun: it removes Government-ID cues 
 field names and tests whether glossary, lineage, and access-policy metadata can earn their added
 complexity against the same lexical baseline. See [`docs/R4_PROTOCOL.md`](docs/R4_PROTOCOL.md).
 
+R5 is a separate preregistered compact-representation test. It uses fresh seeds, preserves R4's
+3x lexical-cost ceiling, and preflights every frozen seed before any model call so an oversized
+full-context row cannot leave the comparison incomplete. See [`docs/R5_PROTOCOL.md`](docs/R5_PROTOCOL.md)
+and the operator-only [`docs/MAC_R5_RUNBOOK.md`](docs/MAC_R5_RUNBOOK.md).
+
 ### Flags that matter
 
 | Flag | Default | Why |
