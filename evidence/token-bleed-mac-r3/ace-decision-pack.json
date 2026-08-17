@@ -1,13 +1,201 @@
 {
   "artifact_type": "ace-decision-pack",
+  "assessment_scope": "generic_contract_gates_only",
   "claim_boundary": "This decision pack reconciles retained, user-supplied evidence against an ACE contract. It does not execute a workload, attest to data collection, independently reproduce a result, or certify deployment safety.",
+  "claim_scoped_assessments": {
+    "governed_quality_vs_full": {
+      "contract_rule": {
+        "classifier_false_negative_rate": 0.0,
+        "comparison": "governed-vs-ungoverned",
+        "minimum_paired_f1_ci_lower_bound": -0.02,
+        "required_splits": [
+          "validation",
+          "holdout"
+        ]
+      },
+      "retained_assessment": {
+        "checks": [
+          {
+            "confidence_interval": [
+              0.25439875,
+              0.50580125
+            ],
+            "metric": "paired_f1_difference_ci",
+            "passed": true,
+            "required_lower_bound": -0.02,
+            "tier": 1500
+          },
+          {
+            "confidence_interval": [
+              0.138195,
+              0.4113624999999998
+            ],
+            "metric": "paired_f1_difference_ci",
+            "passed": true,
+            "required_lower_bound": -0.02,
+            "tier": 3000
+          }
+        ],
+        "verdict": "ACCEPTED"
+      },
+      "verdict": "ACCEPTED"
+    },
+    "governed_sensitivity_vs_lexical": {
+      "contract_rule": {
+        "classifier_false_negative_rates": [
+          0.05,
+          0.1
+        ],
+        "comparison": "governed-vs-lexical",
+        "require_same_quality_and_token_rules_as_governed_value_vs_lexical": true
+      },
+      "retained_assessment": {
+        "conditions": {
+          "0.05": {
+            "checks": [
+              {
+                "confidence_interval": [
+                  -0.3412525,
+                  -0.08255000000000001
+                ],
+                "metric": "paired_f1_difference_ci",
+                "passed": false,
+                "required_lower_bound": 0.0,
+                "tier": 3000
+              },
+              {
+                "actual": 2.056889747192239,
+                "maximum": 1.1,
+                "metric": "mean_prompt_token_ratio",
+                "passed": false,
+                "tier": 3000
+              }
+            ],
+            "verdict": "REJECTED"
+          },
+          "0.1": {
+            "checks": [
+              {
+                "confidence_interval": [
+                  -0.3886525,
+                  0.00690499999999993
+                ],
+                "metric": "paired_f1_difference_ci",
+                "passed": false,
+                "required_lower_bound": 0.0,
+                "tier": 3000
+              },
+              {
+                "actual": 2.000945670894769,
+                "maximum": 1.1,
+                "metric": "mean_prompt_token_ratio",
+                "passed": false,
+                "tier": 3000
+              }
+            ],
+            "verdict": "REJECTED"
+          }
+        },
+        "verdict": "REJECTED"
+      },
+      "verdict": "REJECTED"
+    },
+    "governed_value_vs_lexical": {
+      "contract_rule": {
+        "classifier_false_negative_rate": 0.0,
+        "comparison": "governed-vs-lexical",
+        "maximum_mean_prompt_tokens_relative_to_lexical": 1.1,
+        "require_holdout_f1_ci_excludes_zero_in_favor": true
+      },
+      "retained_assessment": {
+        "checks": [
+          {
+            "confidence_interval": [
+              -0.37135875,
+              5.2499999999958186e-05
+            ],
+            "metric": "paired_f1_difference_ci",
+            "passed": false,
+            "required_lower_bound": 0.0,
+            "tier": 3000
+          },
+          {
+            "actual": 2.1093927366684313,
+            "maximum": 1.1,
+            "metric": "mean_prompt_token_ratio",
+            "passed": false,
+            "tier": 3000
+          }
+        ],
+        "verdict": "REJECTED"
+      },
+      "verdict": "REJECTED"
+    },
+    "selective_context_cost_vs_full": {
+      "contract_rule": {
+        "classifier_false_negative_rate": 0.0,
+        "comparison": "governed-vs-ungoverned",
+        "required_mean_prompt_token_reduction": 0.5,
+        "required_splits": [
+          "development",
+          "validation",
+          "holdout"
+        ]
+      },
+      "retained_assessment": {
+        "checks": [
+          {
+            "actual": 0.9417252869137738,
+            "metric": "mean_prompt_token_reduction",
+            "passed": true,
+            "required": 0.5,
+            "tier": 300
+          },
+          {
+            "actual": 0.9600518617989786,
+            "metric": "mean_prompt_token_reduction",
+            "passed": true,
+            "required": 0.5,
+            "tier": 1500
+          },
+          {
+            "actual": 0.9623663045879784,
+            "metric": "mean_prompt_token_reduction",
+            "passed": true,
+            "required": 0.5,
+            "tier": 3000
+          }
+        ],
+        "verdict": "ACCEPTED"
+      },
+      "verdict": "ACCEPTED"
+    }
+  },
   "config_sha256": "22d426ac1b0e0bced39e3af82d6ac6d7310a51a3581049874f59b01adc9e5354",
-  "created_at_utc": "2026-08-16T23:31:59.541642+00:00",
+  "created_at_utc": "2026-08-17T00:09:37.514648+00:00",
   "evidence_gaps": [],
   "evidence_schema_version": "1.0",
   "experiment_id": "token-bleed-mac-r3",
   "failed_trial_count": 0,
   "gates": [
+    {
+      "evidence": {
+        "actual": [
+          "governed_quality_vs_full",
+          "governed_sensitivity_vs_lexical",
+          "governed_value_vs_lexical",
+          "selective_context_cost_vs_full"
+        ],
+        "expected": [
+          "governed_quality_vs_full",
+          "governed_sensitivity_vs_lexical",
+          "governed_value_vs_lexical",
+          "selective_context_cost_vs_full"
+        ]
+      },
+      "gate": "claim_scope_coverage",
+      "passed": true
+    },
     {
       "evidence": {
         "declared_seed_count": 20,
@@ -144,7 +332,7 @@
       "passed": true
     }
   ],
-  "package_version": "0.1.0",
+  "package_version": "0.1.2",
   "reasons": [
     "Retained evidence satisfies the configured rule checks. Independent reproduction is still outside this assessment."
   ],
