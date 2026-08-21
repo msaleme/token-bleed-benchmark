@@ -23,3 +23,12 @@ For a local artifact-only check when ACE is intentionally unavailable:
 ```bash
 python3 scripts/verify_r5_public_evidence.py --skip-ace
 ```
+
+The published digests also verify with stock coreutils, from either evidence directory:
+
+```bash
+cd evidence/token-bleed-mac-r5 && sha256sum -c SHA256SUMS.txt
+```
+
+The withheld raw report is recorded on a `#` comment line, so this check exits 0 over the files
+that are actually published while its digest stays committed for chain of custody.
