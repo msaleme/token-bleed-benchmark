@@ -50,16 +50,28 @@ def load_json(path: Path) -> dict:
     return value
 
 
-def parse_manifest(path: Path) -> dict[str, str]:
+def parse_manifest(path: Path) -> tuple[dict[str, str], dict[str, str]]:
+    """Parse a SHA256SUMS file into (checkable entries, withheld-artifact commitments).
+
+    Artifacts deliberately not published are recorded on ``#`` comment lines so that a
+    plain ``sha256sum -c SHA256SUMS.txt`` verifies the published packet cleanly while the
+    withheld digest stays committed for chain of custody.
+    """
     entries: dict[str, str] = {}
+    commitments: dict[str, str] = {}
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
+            continue
+        if line.lstrip().startswith("#"):
+            digest, separator, name = line.lstrip().lstrip("#").strip().partition("  ")
+            if separator and len(digest) == 64:
+                commitments[name] = digest
             continue
         digest, separator, name = line.partition("  ")
         if not separator or len(digest) != 64:
             fail(f"invalid SHA256SUMS line: {line}")
         entries[name] = digest
-    return entries
+    return entries, commitments
 
 
 def claim_verdicts(pack: dict) -> dict[str, str]:
@@ -74,12 +86,12 @@ def claim_verdicts(pack: dict) -> dict[str, str]:
 
 def verify_packet(root: Path) -> tuple[Path, Path, dict]:
     evidence_dir = root / "evidence" / "token-bleed-mac-r5"
-    manifest = parse_manifest(evidence_dir / "SHA256SUMS.txt")
+    manifest, commitments = parse_manifest(evidence_dir / "SHA256SUMS.txt")
     required = {"preflight.json", "ace-evidence.json", "ace-decision-pack.json"}
     if not required.issubset(manifest):
         fail("SHA256SUMS lacks one or more published artifact digests")
     raw_entry = "report.json (retained raw evidence; not published because it embeds host identifiers)"
-    if raw_entry not in manifest:
+    if raw_entry not in commitments and raw_entry not in manifest:
         fail("SHA256SUMS lacks the private raw-report hash commitment")
     for name in required:
         path = evidence_dir / name
