@@ -118,6 +118,17 @@ R5 is a separate preregistered compact-representation test. It uses fresh seeds,
 full-context row cannot leave the comparison incomplete. See [`docs/R5_PROTOCOL.md`](docs/R5_PROTOCOL.md)
 and the operator-only [`docs/MAC_R5_RUNBOOK.md`](docs/MAC_R5_RUNBOOK.md).
 
+## Public reading path
+
+- **Technical record:** [Token-Bleed R5 immutable release](https://github.com/msaleme/token-bleed-benchmark/releases/tag/r5-results-2026-08-17)
+- **Executive interpretation:** [Context Is Part of an Agent's Authority](https://pubpoint.com/publications/context-is-part-of-an-agents-authority/)
+- **Claim-scoped assessment:** [ACE R5 reference application](https://github.com/msaleme/ace-experiment-framework/blob/main/docs/REFERENCE_APPLICATION_TOKEN_BLEED_R5.md)
+- **Research context:** [PubPoint Research Map](https://pubpoint.com/research-map/)
+
+The technical release is authoritative for the R5 result and its limitations. The executive
+publication interprets the result for enterprise context design; neither source expands the
+synthetic, named-endpoint evidence boundary.
+
 ### Flags that matter
 
 | Flag | Default | Why |
