@@ -1,32 +1,22 @@
 {
   "title": "Selective Context Under a Claim-Scoped Evidence Contract: A Synthetic Runtime Characterization of Token-Bleed R5",
   "resource_type": "preprint",
+  "version": "R5",
+  "language": "eng",
   "status": "draft-not-for-deposit",
-  "creators": [
-    {
-      "name": "Saleme, Michael K.",
-      "orcid": "0009-0003-6736-1900"
-    }
-  ],
-  "source_release": "Token-Bleed R5 privacy-safe technical record",
-  "source_revision": "1df3e5c9446086c52077656791825c968fa581e3",
+  "creators": [{"name": "Saleme, Michael K.", "orcid": "0009-0003-6736-1900"}],
+  "deposit_license": "CC-BY-4.0 pending authorial approval; repository source remains MIT",
+  "source_lineage": {
+    "collection_revision": "1df3e5c9446086c52077656791825c968fa581e3",
+    "privacy_safe_release_revision": "25e24e0212b53bcb0f1497c80919c9223caaab26",
+    "preprint_candidate_revision": "c207ef72bb6b5946343619653cffdf9f88b28d19",
+    "statement": "Results were collected at collection_revision. privacy_safe_release_revision is its descendant and adds public result artifacts without changing collection source. preprint_candidate_revision is a later descendant that stages preprint materials. Set the Zenodo related identifier to the final merged preprint revision immediately before deposit."
+  },
   "experiment_contract": "experiments/token-bleed-mac-r5.yaml",
   "experiment_contract_sha256": "a110afbf9158cde7f83a9a373917435ade655a91922c94ae22f57e6435f33982",
-  "evidence_boundary": "The original raw report remains private because its hardware provenance contains host identifiers. The public packet retains the raw-report SHA-256 and privacy-safe derived evidence.",
-  "accepted_claim_scope": "In this named synthetic endpoint configuration, compact governed selection was 96.9%-97.9% lower prompt cost and higher quality than raw full-context stuffing, but did not clear the 3x lexical-cost ceiling.",
-  "prohibited_claims": [
-    "Governance is universally economically superior.",
-    "Governed selection beats lexical filtering.",
-    "This is a production policy-engine result.",
-    "This is a customer-data or ROI result.",
-    "This is a cross-model result.",
-    "This is a replication of another study."
-  ],
-  "required_deposit_files": [
-    "Reviewed preprint PDF",
-    "Final citation metadata",
-    "Privacy-safe evidence artifact manifest with fresh SHA-256 hashes",
-    "License declaration",
-    "Explicit private-raw-data limitation"
-  ]
+  "evidence_boundary": "Auditable derived-evidence package. The original raw report remains private because its hardware provenance contains host identifiers. The public packet retains a commented raw-report SHA-256 provenance reference and privacy-safe derived evidence, but does not permit independent inspection or recomputation from raw outputs.",
+  "accepted_claim_scope": "In this named synthetic endpoint configuration, compact governed selection used 96.9%-97.9% fewer prompt tokens and higher mean F1 than raw full-context stuffing. It did not meet the frozen 3x prompt-token-ratio rule versus the lexical negative control.",
+  "prohibited_claims": ["Governance is universally economically superior.", "Governed selection beats lexical filtering generally.", "This is a production policy-engine result.", "This is a customer-data or ROI result.", "This is a cross-model result.", "This is an independently reproducible raw-evidence package."],
+  "required_deposit_files": ["Reviewed preprint PDF", "Final Zenodo metadata JSON", "CITATION.cff", "Deposit-level SHA256SUMS.txt", "Privacy-safe evidence archive", "Explicit private-raw-data limitation"],
+  "related_identifier_rule": "Use relation 'documents' for the final immutable repository revision only if the deposited preprint documents that source snapshot; do not use isSupplementTo for this relationship."
 }
