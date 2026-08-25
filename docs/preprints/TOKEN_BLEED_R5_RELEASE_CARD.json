@@ -3,16 +3,16 @@
   "resource_type": "preprint",
   "version": "R5",
   "language": "eng",
-  "status": "draft-not-for-deposit",
+  "status": "approved-for-deposit",
   "creators": [{"name": "Saleme, Michael K.", "orcid": "0009-0003-6736-1900"}],
   "deposit_license": "CC-BY-4.0",
   "repository_source_license": "MIT",
-  "authorial_license_approved": false,
+  "authorial_license_approved": true,
   "source_lineage": {
     "collection_revision": "1df3e5c9446086c52077656791825c968fa581e3",
     "privacy_safe_release_revision": "25e24e0212b53bcb0f1497c80919c9223caaab26",
-    "preprint_candidate_revision": "c207ef72bb6b5946343619653cffdf9f88b28d19",
-    "statement": "Results were collected at collection_revision. privacy_safe_release_revision is its descendant and adds public result artifacts without changing collection source. preprint_candidate_revision is a later descendant that stages preprint materials. Set the Zenodo related identifier to the final merged preprint revision immediately before deposit."
+    "preprint_source_revision": "b2161f24b3b101688646232ccbf142f6c6012cb4",
+    "statement": "Results were collected at collection_revision. privacy_safe_release_revision is its descendant and adds public result artifacts without changing collection source. preprint_source_revision is the merged preprint source snapshot. Set the Zenodo related identifier to the immutable release that contains this approved release card immediately before deposit."
   },
   "experiment_contract": "experiments/token-bleed-mac-r5.yaml",
   "experiment_contract_sha256": "a110afbf9158cde7f83a9a373917435ade655a91922c94ae22f57e6435f33982",
