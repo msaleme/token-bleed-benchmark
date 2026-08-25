@@ -97,6 +97,26 @@ class GovernedCandidateTests(unittest.TestCase):
         self.assertEqual({row["seed"] for row in result["rows"]}, {102, 103})
         self.assertEqual({row["classifier_fn_rate"] for row in result["rows"]}, {0.0, 0.1})
 
+    def test_r5_holdout_nominal_miss_rates_use_python_bankers_rounding(self):
+        """Keep the preprint's realized-miss calculation tied to the runner."""
+        realized = {0.05: [], 0.10: []}
+        removals = {0.05: [], 0.10: []}
+        for seed in range(102, 122):
+            _, key = benchmark.build_catalog_for_scenario(
+                1200, seed, "r5-compact-semantic-access"
+            )
+            for rate in realized:
+                removed = round(len(key) * rate)
+                removals[rate].append(removed)
+                realized[rate].append(removed / len(key))
+
+        self.assertEqual(sum(removals[0.05]) / 20, 0.75)
+        self.assertAlmostEqual(sum(realized[0.05]) / 20, 0.05882418235359412)
+        self.assertEqual((min(realized[0.05]), max(realized[0.05])), (0.0, 1 / 11))
+        self.assertEqual(sum(removals[0.10]) / 20, 1.10)
+        self.assertAlmostEqual(sum(realized[0.10]) / 20, 0.09224154930037283)
+        self.assertEqual((min(realized[0.10]), max(realized[0.10])), (1 / 14, 1 / 7))
+
     def test_route_order_is_seeded_and_preserves_every_route(self):
         first = [name for name, _ in benchmark.randomized_routes(42)]
         again = [name for name, _ in benchmark.randomized_routes(42)]
