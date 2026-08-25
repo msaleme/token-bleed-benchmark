@@ -17,7 +17,7 @@ The result supports a bounded finding about the bundled compact route relative t
 
 The study tests a synthetic identity-data selection task with access-policy constraints. Each generated catalog contains opaque physical column names, synthetic business-term, lineage, and access-policy metadata, plus a frozen answer key. A valid answer is a fully qualified column name representing an approved government-issued identity number. Restricted identity fields and non-identity decoys are invalid answers. F1 is the harmonic mean of precision and recall after parsing exact fully qualified names from the model response against that frozen key.
 
-The protocol was **prespecified in a frozen, pre-collection experiment contract**. This document intentionally does not use “preregistered” in the sense of an externally registered study protocol. The source lineage is explicit: collection revision [`1df3e5c`](https://github.com/msaleme/token-bleed-benchmark/commit/1df3e5c9446086c52077656791825c968fa581e3) → privacy-safe result release [`25e24e0`](https://github.com/msaleme/token-bleed-benchmark/commit/25e24e0212b53bcb0f1497c80919c9223caaab26) → preprint candidate [`c207ef7`](https://github.com/msaleme/token-bleed-benchmark/commit/c207ef72bb6b5946343619653cffdf9f88b28d19). The middle commit is a descendant of collection and adds public result artifacts without changing the collection source.
+The protocol was **prespecified in a frozen, pre-collection experiment contract**. This document intentionally does not use “preregistered” in the sense of an externally registered study protocol. The source lineage is explicit: collection revision [`1df3e5c`](https://github.com/msaleme/token-bleed-benchmark/commit/1df3e5c9446086c52077656791825c968fa581e3) → privacy-safe result release [`25e24e0`](https://github.com/msaleme/token-bleed-benchmark/commit/25e24e0212b53bcb0f1497c80919c9223caaab26) → the immutable [R5 technical-preprint release](https://github.com/msaleme/token-bleed-benchmark/releases/tag/r5-preprint-2026-08-25.1). The middle commit is a descendant of collection and adds public result artifacts without changing the collection source.
 
 ## 2. Methods
 
@@ -86,8 +86,8 @@ R5 is a narrow synthetic experiment report, not a replication or substitute for 
 
 ## 6. Public artifacts
 
-- [Frozen R5 contract](https://github.com/msaleme/token-bleed-benchmark/blob/1df3e5c9446086c52077656791825c968fa581e3/experiments/token-bleed-mac-r5.yaml)
-- [Privacy-safe R5 results](https://github.com/msaleme/token-bleed-benchmark/blob/25e24e0212b53bcb0f1497c80919c9223caaab26/docs/R5_RESULTS.md)
-- [R3-R5 commissioning reconciliation](https://github.com/msaleme/token-bleed-benchmark/blob/c207ef72bb6b5946343619653cffdf9f88b28d19/docs/R3_R4_R5_RECONCILIATION.md)
-- [Public evidence verifier](https://github.com/msaleme/token-bleed-benchmark/blob/c207ef72bb6b5946343619653cffdf9f88b28d19/scripts/verify_r5_public_evidence.py)
+- [Frozen R5 contract](https://github.com/msaleme/token-bleed-benchmark/blob/r5-preprint-2026-08-25.1/experiments/token-bleed-mac-r5.yaml)
+- [Privacy-safe R5 results](https://github.com/msaleme/token-bleed-benchmark/blob/r5-preprint-2026-08-25.1/docs/R5_RESULTS.md)
+- [R3-R5 commissioning reconciliation](https://github.com/msaleme/token-bleed-benchmark/blob/r5-preprint-2026-08-25.1/docs/R3_R4_R5_RECONCILIATION.md)
+- [Public evidence verifier](https://github.com/msaleme/token-bleed-benchmark/blob/r5-preprint-2026-08-25.1/scripts/verify_r5_public_evidence.py)
 - [ACE reference-application boundary](https://github.com/msaleme/ace-experiment-framework/blob/a2dc79d48987cb2bcd6e946bb04afe746b77fd61/docs/REFERENCE_APPLICATION_TOKEN_BLEED_R5.md)
